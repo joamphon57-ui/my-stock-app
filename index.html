@@ -867,9 +867,10 @@
       const [logs, setLogs] = useState([]);
       const [loading, setLoading] = useState(true);
 
-      // Search States
+      // Search & Filter States
       const [searchProduction, setSearchProduction] = useState('');
       const [searchStock, setSearchStock] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('all'); // เพิ่ม State หมวดหมู่
       const [searchRecipe, setSearchRecipe] = useState('');
       const [searchHistory, setSearchHistory] = useState('');
 
@@ -924,18 +925,30 @@
         };
       }, []);
 
+      // ดึงรายชื่อหมวดหมู่ทั้งหมดที่มีในสต๊อกแบบไดนามิก
+      const availableCategories = useMemo(() => {
+        const defaultCats = ['ชา/กาแฟ', 'นม/น้ำตาล', 'ไซรัป/ยา', 'ท็อปปิ้ง', 'บรรจุภัณฑ์', 'อื่นๆ'];
+        const stockCats = stocks.map(s => s.category).filter(Boolean);
+        return Array.from(new Set([...defaultCats, ...stockCats]));
+      }, [stocks]);
+
       // Filtered Lists
       const filteredProductionRecipes = useMemo(() => {
         return recipes.filter(r => r.name.toLowerCase().includes(searchProduction.toLowerCase()));
       }, [recipes, searchProduction]);
 
+      // ระบบ กรองตามคำค้นหา + หมวดหมู่ที่เลือก
       const filteredStocks = useMemo(() => {
-        return stocks.filter(s => 
-          s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
-          (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase())) ||
-          (s.barcode && s.barcode.includes(searchStock))
-        );
-      }, [stocks, searchStock]);
+        return stocks.filter(s => {
+          const matchSearch = s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
+                             (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase())) ||
+                             (s.barcode && s.barcode.includes(searchStock));
+          
+          const matchCategory = selectedCategory === 'all' || s.category === selectedCategory;
+
+          return matchSearch && matchCategory;
+        });
+      }, [stocks, searchStock, selectedCategory]);
 
       const filteredRecipes = useMemo(() => {
         return recipes.filter(r => r.name.toLowerCase().includes(searchRecipe.toLowerCase()));
@@ -1448,18 +1461,48 @@
                         </div>
                       </div>
 
-                      <div className="mb-5 relative">
-                        <input
-                          type="text"
-                          placeholder="ค้นหาวัตถุดิบ หรือสแกนบาร์โค้ด..."
-                          value={searchStock}
-                          onChange={(e) => setSearchStock(e.target.value)}
-                          className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
-                        />
-                        <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
-                        {searchStock && (
-                          <button onClick={() => setSearchStock('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
-                        )}
+                      {/* --- ส่วนค้นหา & ปุ่มกดเลือกหมวดหมู่ (Category Filter) --- */}
+                      <div className="space-y-3 mb-5">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="ค้นหาวัตถุดิบ หรือสแกนบาร์โค้ด..."
+                            value={searchStock}
+                            onChange={(e) => setSearchStock(e.target.value)}
+                            className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
+                          />
+                          <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
+                          {searchStock && (
+                            <button onClick={() => setSearchStock('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                          )}
+                        </div>
+
+                        {/* ปุ่ม Filter หมวดหมู่ */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                          <button
+                            onClick={() => setSelectedCategory('all')}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                              selectedCategory === 'all'
+                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            ทั้งหมด
+                          </button>
+                          {availableCategories.map((cat, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setSelectedCategory(cat)}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                                selectedCategory === cat
+                                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       {filteredStocks.length === 0 ? (
