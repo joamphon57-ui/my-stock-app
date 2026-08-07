@@ -110,6 +110,8 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
+    const MASTER_PASSWORD = "Phon1234"; // รหัสผ่านหลักระบบ
+
     // --- Firebase Configuration ---
     const firebaseConfig = {
       apiKey: "AIzaSyD3wBGAwKShNdgQ9koIOc012Rr7G3PThaQ",
@@ -330,11 +332,12 @@
     }
 
     // ==========================================
-    // 2. MODAL: เติมวัตถุดิบเข้าคลัง (Restock Batch Modal)
+    // 2. MODAL: เติมวัตถุดิบเข้าคลัง (Restock Batch Modal) + หมวดหมู่
     // ==========================================
-    function RestockModal({ isOpen, onClose, stocks, onConfirmBatchRestock }) {
+    function RestockModal({ isOpen, onClose, stocks, categories, onConfirmBatchRestock }) {
       const [restockQtyMap, setRestockQtyMap] = useState({});
       const [note, setNote] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('all');
 
       useEffect(() => {
         if (isOpen) {
@@ -342,10 +345,13 @@
           stocks.forEach(s => { initialMap[s.id] = ''; });
           setRestockQtyMap(initialMap);
           setNote('เติมวัตถุดิบประจำวัน');
+          setSelectedCategory('all');
         }
       }, [isOpen, stocks]);
 
       if (!isOpen) return null;
+
+      const filteredStocks = stocks.filter(s => selectedCategory === 'all' || s.category === selectedCategory);
 
       const handleQtyChange = (stockId, val) => {
         setRestockQtyMap(prev => ({ ...prev, [stockId]: val }));
@@ -360,7 +366,7 @@
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
             <div>
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-3">
                 <div>
                   <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                     <i data-lucide="plus-circle" className="w-5 h-5 text-emerald-600"></i>
@@ -373,9 +379,38 @@
                 </button>
               </div>
 
+              {/* หมวดหมู่ให้เลือกแบบหน้ารวมวัตถุดิบ */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 mb-2 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    selectedCategory === 'all'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  ทั้งหมด
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                      selectedCategory === cat.name
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+
               <form id="restockForm" onSubmit={handleSubmit} className="space-y-4">
-                <div className="max-h-[50vh] overflow-y-auto pr-1 space-y-3">
-                  {stocks.map(stock => {
+                <div className="max-h-[45vh] overflow-y-auto pr-1 space-y-3">
+                  {filteredStocks.map(stock => {
                     const isLow = Number(stock.current) <= Number(stock.minAlert || 0);
                     return (
                       <div key={stock.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${isLow ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
@@ -404,6 +439,9 @@
                       </div>
                     );
                   })}
+                  {filteredStocks.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 text-xs italic">ไม่พบวัตถุดิบในหมวดหมู่นี้</div>
+                  )}
                 </div>
 
                 <div className="pt-2">
@@ -429,36 +467,31 @@
     }
 
     // ==========================================
-    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal)
+    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal) - เลือกหมวดหมู่
     // ==========================================
-    function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
+    function TransferModal({ isOpen, onClose, stocks, categories, onConfirmTransfer }) {
+      const [selectedCategory, setSelectedCategory] = useState('');
       const [stockId, setStockId] = useState('');
-      const [searchQuery, setSearchQuery] = useState('');
       const [qty, setQty] = useState('');
       const [issuer, setIssuer] = useState('');
 
-      const filteredStocksForTransfer = useMemo(() => {
-        if (!searchQuery) return stocks;
-        return stocks.filter(s => 
-          (s.name && s.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-      }, [stocks, searchQuery]);
-
       useEffect(() => {
         if (isOpen) {
-          setSearchQuery('');
+          const defaultCat = categories.length > 0 ? categories[0].name : '';
+          setSelectedCategory(defaultCat);
           setQty('');
           setIssuer('');
-          if (stocks && stocks.length > 0) setStockId(stocks[0].id);
         }
-      }, [isOpen, stocks]);
+      }, [isOpen, categories]);
+
+      const filteredStocksForTransfer = useMemo(() => {
+        if (!selectedCategory) return stocks;
+        return stocks.filter(s => (s.category || 'ทั่วไป') === selectedCategory);
+      }, [stocks, selectedCategory]);
 
       useEffect(() => {
         if (filteredStocksForTransfer.length > 0) {
-          if (!filteredStocksForTransfer.some(s => s.id === stockId)) {
-            setStockId(filteredStocksForTransfer[0].id);
-          }
+          setStockId(filteredStocksForTransfer[0].id);
         } else {
           setStockId('');
         }
@@ -500,22 +533,25 @@
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาวัตถุดิบ</label>
-                <input
-                  type="text"
-                  placeholder="พิมพ์ชื่อวัตถุดิบ..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 text-xs rounded-xl custom-input mb-2"
-                />
+                <label className="block text-xs font-semibold text-slate-600 mb-1">📁 เลือกหมวดหมู่ <span className="text-rose-500">*</span></label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 text-xs rounded-xl custom-input mb-3 font-semibold text-slate-700"
+                >
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                  {categories.length === 0 && <option value="ทั่วไป">ทั่วไป</option>}
+                </select>
 
-                <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบ / น้ำปรุง <span className="text-rose-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบในหมวดหมู่นี้ <span className="text-rose-500">*</span></label>
                 <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input font-medium">
                   {filteredStocksForTransfer.map(s => (
                     <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
                   ))}
                   {filteredStocksForTransfer.length === 0 && (
-                    <option value="" disabled>ไม่พบวัตถุดิบในคลัง</option>
+                    <option value="" disabled>ไม่มีวัตถุดิบในหมวดหมู่นี้</option>
                   )}
                 </select>
               </div>
@@ -552,6 +588,54 @@
                 <button type="submit" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">ยืนยันเอาของออก</button>
               </div>
             </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MODAL: ยืนยันการลบประวัติ ( Restore / No Restore )
+    // ==========================================
+    function DeleteLogModal({ isOpen, onClose, logToDelete, onConfirmDelete }) {
+      if (!isOpen || !logToDelete) return null;
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 text-center">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="alert-circle" className="w-6 h-6"></i>
+            </div>
+            <h3 className="font-bold text-base text-slate-800 mb-1">ยืนยันการลบประวัติรายการ</h3>
+            <p className="text-xs text-slate-500 mb-4 font-medium">"{logToDelete.title}"</p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left mb-5">
+              <p className="text-xs text-amber-800 font-semibold mb-1">คุณต้องการคืนค่าสต๊อกวัตถุดิบเดิมหรือไม่?</p>
+              <p className="text-[11px] text-amber-700/80">• <b>คืนค่าสต๊อก:</b> ระบบจะดึงวัตถุดิบที่ถูกตัดไปคืนกลับเข้าคลังสต๊อกให้อัตโนมัติ<br/>• <b>ไม่คืนค่าสต๊อก:</b> ลบเฉพาะประวัติข้อความออกเพียงอย่างเดียว</p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => onConfirmDelete(true)}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md"
+              >
+                🔄 คืนค่าสต๊อกเดิม & ลบประวัติ
+              </button>
+              <button
+                type="button"
+                onClick={() => onConfirmDelete(false)}
+                className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md"
+              >
+                🗑️ ลบประวัติเฉยๆ (ไม่คืนค่าสต๊อก)
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition mt-1"
+              >
+                ยกเลิก
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -882,6 +966,8 @@
     // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('production');
+      const [isBomUnlocked, setIsBomUnlocked] = useState(false); // ปล็อคหน้า BOM
+
       const [stocks, setStocks] = useState([]);
       const [recipes, setRecipes] = useState([]);
       const [logs, setLogs] = useState([]);
@@ -898,6 +984,9 @@
       const [batchQuantities, setBatchQuantities] = useState({});
       const [productionNote, setProductionNote] = useState('');
 
+      // Hidden items states for history
+      const [unlockedLogDetails, setUnlockedLogDetails] = useState({});
+
       // Modals
       const [stockModalOpen, setStockModalOpen] = useState(false);
       const [editingStock, setEditingStock] = useState(null);
@@ -910,6 +999,9 @@
       const [editingRecipe, setEditingRecipe] = useState(null);
 
       const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+
+      // Delete Log State
+      const [logToDelete, setLogToDelete] = useState(null);
 
       useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
@@ -958,6 +1050,35 @@
           unsubLogs();
         };
       }, []);
+
+      // Switch Tab Handler with Password check for BOM
+      const handleTabChange = (tabName) => {
+        if (tabName === 'bom' && !isBomUnlocked) {
+          const pass = prompt('🔐 กรุณากรอกรหัสผ่านเพื่อเข้าถึง "สูตรการผลิต (BOM)":');
+          if (pass === MASTER_PASSWORD) {
+            setIsBomUnlocked(true);
+            setActiveTab('bom');
+          } else if (pass !== null) {
+            alert('❌ รหัสผ่านไม่ถูกต้อง');
+          }
+        } else {
+          setActiveTab(tabName);
+        }
+      };
+
+      // Toggle Show Hidden Details in History
+      const handleToggleShowDetails = (logId) => {
+        if (unlockedLogDetails[logId]) {
+          setUnlockedLogDetails(prev => ({ ...prev, [logId]: false }));
+        } else {
+          const pass = prompt('🔐 กรุณากรอกรหัสผ่านเพื่อดูวัตถุดิบที่ใช้ไป:');
+          if (pass === MASTER_PASSWORD) {
+            setUnlockedLogDetails(prev => ({ ...prev, [logId]: true }));
+          } else if (pass !== null) {
+            alert('❌ รหัสผ่านไม่ถูกต้อง');
+          }
+        }
+      };
 
       // Category Actions
       const handleAddCategory = async (catName) => {
@@ -1093,6 +1214,7 @@
             type: 'ปรุงผลิต',
             title: `ปรุง ${titleText}`,
             details: detailsList,
+            rawDeductions: deductionsSummary, // เก็บข้อมูลดิบสำหรับการ Restock ตอนกดลบประวัติ
             note: productionNote || 'ปรุงผลิตประจำวัน'
           });
 
@@ -1118,6 +1240,45 @@
           } catch(e) {
             alert("เกิดข้อผิดพลาดในการล้างประวัติ");
           }
+        }
+      };
+
+      const handleConfirmDeleteLog = async (shouldRestore) => {
+        if (!logToDelete) return;
+
+        try {
+          const batch = db.batch();
+
+          // หากผู้ใช้เลือกต้องการคืนค่าสต๊อก
+          if (shouldRestore) {
+            // กรณีเป็นรายการเอาของออก
+            if (logToDelete.type === 'เอาของออกไปหน้าร้าน' && logToDelete.stockId && logToDelete.stockQty) {
+              const stockRef = db.collection('stocks').doc(logToDelete.stockId);
+              batch.update(stockRef, {
+                current: firebase.firestore.FieldValue.increment(Number(logToDelete.stockQty))
+              });
+            } 
+            // กรณีเป็นรายการปรุงผลิต
+            else if (logToDelete.rawDeductions) {
+              Object.entries(logToDelete.rawDeductions).forEach(([sId, amount]) => {
+                const stockRef = db.collection('stocks').doc(sId);
+                batch.update(stockRef, {
+                  current: firebase.firestore.FieldValue.increment(Number(amount))
+                });
+              });
+            }
+          }
+
+          // ลบ Log
+          const logRef = db.collection('logs').doc(logToDelete.id);
+          batch.delete(logRef);
+
+          await batch.commit();
+          alert(shouldRestore ? 'ลบประวัติพร้อมคืนค่าสต๊อกเดิมเรียบร้อยแล้ว!' : 'ลบรายการประวัติเรียบร้อยแล้ว!');
+          setLogToDelete(null);
+        } catch (e) {
+          console.error(e);
+          alert('เกิดข้อผิดพลาดในการลบรายการประวัติ');
         }
       };
 
@@ -1222,6 +1383,8 @@
             type: 'เอาของออกไปหน้าร้าน',
             title: `เอาของ ${stockItem.name} (${qty} ${stockItem.unit}) ออกไปหน้าร้าน`,
             details: [`${stockItem.name}: -${qty} ${stockItem.unit}`],
+            stockId: stockId, // บันทึกไว้เผื่อลบคืนค่า
+            stockQty: qty,
             note: note || 'เอาของออกไปหน้าร้าน'
           });
 
@@ -1278,11 +1441,11 @@
                 <div className="flex items-center space-x-1.5 sm:space-x-2">
                   <button onClick={() => setPrintModalOpen(true)} className="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md transition">
                     <i data-lucide="printer" className="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
-                    <span className="hidden sm:inline">สรุปรายงานประจำวัน </span>
+                    <span className="hidden sm:inline">สรุปรายงานประจำวัน</span>
                   </button>
 
                   {lowStockItems.length > 0 && (
-                    <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 animate-pulse">
+                    <button onClick={() => handleTabChange('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 animate-pulse">
                       <i data-lucide="bell" className="w-3.5 h-3.5"></i>
                       <span>({lowStockItems.length})</span>
                     </button>
@@ -1292,23 +1455,24 @@
 
               <div className="bg-slate-100/80 p-1.5 border-t border-slate-200/60">
                 <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto no-scrollbar justify-start sm:justify-center px-2">
-                  <button onClick={() => setActiveTab('production')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => handleTabChange('production')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="flame" className="w-4 h-4"></i>
                     <span>บันทึกการผลิต</span>
                   </button>
 
-                  <button onClick={() => setActiveTab('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => handleTabChange('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="boxes" className="w-4 h-4"></i>
                     <span>คลังวัตถุดิบ</span>
                     {lowStockItems.length > 0 && <span className="w-2 h-2 rounded-full bg-rose-500"></span>}
                   </button>
 
-                  <button onClick={() => setActiveTab('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => handleTabChange('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="book-open" className="w-4 h-4"></i>
                     <span>สูตรการผลิต (BOM)</span>
+                    {!isBomUnlocked && <span className="text-[10px]">🔒</span>}
                   </button>
 
-                  <button onClick={() => setActiveTab('history')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => handleTabChange('history')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="history" className="w-4 h-4"></i>
                     <span>ประวัติย้อนหลัง</span>
                   </button>
@@ -1714,26 +1878,56 @@
                             if (isProduction) badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
                             if (isTransfer) badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
 
+                            const isUnlocked = unlockedLogDetails[log.id];
+
                             return (
                               <div key={log.id} className="border border-slate-200 rounded-2xl p-3.5 sm:p-5 bg-white hover:border-slate-300 transition shadow-sm">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5 pb-2.5 border-b border-slate-100">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2.5 border-b border-slate-100">
                                   <div className="flex items-center space-x-2">
                                     <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-lg border ${badgeStyle}`}>
                                       {log.type || 'บันทึก'}
                                     </span>
                                     <h3 className="font-bold text-xs sm:text-sm text-slate-800">{log.title}</h3>
                                   </div>
-                                  <span className="text-[10px] sm:text-xs text-slate-400 font-medium">{log.datetime}</span>
+                                  
+                                  <div className="flex items-center justify-between sm:justify-end gap-3">
+                                    <span className="text-[10px] sm:text-xs text-slate-400 font-medium">{log.datetime}</span>
+                                    <button
+                                      onClick={() => setLogToDelete(log)}
+                                      className="text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 p-1.5 rounded-lg transition text-xs font-bold flex items-center gap-1"
+                                      title="ลบรายการนี้"
+                                    >
+                                      <i data-lucide="trash-2" className="w-3.5 h-3.5"></i> ลบ
+                                    </button>
+                                  </div>
                                 </div>
 
                                 {log.details && log.details.length > 0 && (
-                                  <div className="mb-2 bg-slate-50 rounded-xl p-2.5 text-[11px] sm:text-xs text-slate-600 space-y-1">
-                                    {log.details.map((dt, i) => (
-                                      <div key={i} className="flex items-center space-x-1.5">
-                                        <span className="text-slate-400">•</span>
-                                        <span>{dt}</span>
+                                  <div className="mb-2 bg-slate-50 rounded-xl p-2.5 text-[11px] sm:text-xs text-slate-600">
+                                    {isUnlocked ? (
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between items-center mb-1 pb-1 border-b border-slate-200/60">
+                                          <span className="font-bold text-slate-700">วัตถุดิบที่ถูกตัดไป:</span>
+                                          <button onClick={() => handleToggleShowDetails(log.id)} className="text-[10px] text-slate-400 hover:text-slate-600">🙈 ซ่อน</button>
+                                        </div>
+                                        {log.details.map((dt, i) => (
+                                          <div key={i} className="flex items-center space-x-1.5">
+                                            <span className="text-slate-400">•</span>
+                                            <span>{dt}</span>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                    ) : (
+                                      <div className="flex items-center justify-between py-0.5">
+                                        <span className="text-slate-400 italic">🔒 ส่วนผสมวัตถุดิบถูกซ่อนไว้</span>
+                                        <button
+                                          onClick={() => handleToggleShowDetails(log.id)}
+                                          className="text-emerald-600 font-bold hover:underline text-[11px] flex items-center gap-1"
+                                        >
+                                          👁️ แสดงวัตถุดิบที่ใช้ไป
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
@@ -1783,6 +1977,7 @@
             isOpen={restockModalOpen}
             onClose={() => setRestockModalOpen(false)}
             stocks={stocks}
+            categories={categories}
             onConfirmBatchRestock={handleBatchRestock}
           />
 
@@ -1790,6 +1985,7 @@
             isOpen={transferModalOpen}
             onClose={() => setTransferModalOpen(false)}
             stocks={stocks}
+            categories={categories}
             onConfirmTransfer={handleTransferToStorefront}
           />
 
@@ -1807,6 +2003,13 @@
             editingRecipe={editingRecipe}
             stocks={stocks}
             handleImageUpload={handleImageUpload}
+          />
+
+          <DeleteLogModal
+            isOpen={!!logToDelete}
+            onClose={() => setLogToDelete(null)}
+            logToDelete={logToDelete}
+            onConfirmDelete={handleConfirmDeleteLog}
           />
         </div>
       );
