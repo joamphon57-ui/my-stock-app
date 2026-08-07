@@ -332,7 +332,7 @@
     }
 
     // ==========================================
-    // 2. MODAL: เติมวัตถุดิบเข้าคลัง (Restock Batch Modal) + หมวดหมู่
+    // 2. MODAL: เติมวัตถุดิบเข้าคลัง (Restock Batch Modal)
     // ==========================================
     function RestockModal({ isOpen, onClose, stocks, categories, onConfirmBatchRestock }) {
       const [restockQtyMap, setRestockQtyMap] = useState({});
@@ -467,7 +467,7 @@
     }
 
     // ==========================================
-    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal) - เลือกหมวดหมู่
+    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, categories, onConfirmTransfer }) {
       const [selectedCategory, setSelectedCategory] = useState('');
