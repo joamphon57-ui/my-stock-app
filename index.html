@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  
+  <!-- เปลี่ยนชื่อที่จะขึ้นตอนแชร์ลิงก์หรือเพิ่มลงหน้าจอโฮมตรงนี้ได้เลยครับ -->
+  <title>ระบบสต๊อกชา & เติมวัตถุดิบ</title>
+  <meta property="og:title" content="ระบบสต๊อกชา & เติมวัตถุดิบ" />
+  <meta property="og:description" content="ระบบจัดการสต๊อก คำนวณการต้มชา และเติมวัตถุดิบประจำวัน" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel CDN for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Google Font: Prompt -->
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { font-family: 'Prompt', sans-serif; background-color: #f1f5f9; }
+    .custom-shadow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none;  scrollbar-width: none; }
+    
+    .custom-input {
+      background-color: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      color: #0f172a;
+      transition: all 0.2s ease-in-out;
+    }
+    .custom-input:focus {
+      background-color: #ffffff;
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+      outline: none;
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- Firebase Configuration ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyD3wBGAwKShNdgQ9koIOc012Rr7G3PThaQ",
+      authDomain: "mystock-9c662.firebaseapp.com",
+      projectId: "mystock-9c662",
+      storageBucket: "mystock-9c662.firebasestorage.app",
+      messagingSenderId: "260845867642",
+      appId: "1:260845867642:web:838b08a93178e8d2eae1c3",
+      measurementId: "G-J37RQGYDT2"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+
+    const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=150';
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('production');
+      const [stocks, setStocks] = useState([]);
+      const [recipes, setRecipes] = useState([]);
+      const [logs, setLogs] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      // Search States ในแต่ละส่วน
+      const [searchProduction, setSearchProduction] = useState('');
+      const [searchStock, setSearchStock] = useState('');
+      const [searchRecipe, setSearchRecipe] = useState('');
+      const [searchHistory, setSearchHistory] = useState('');
+
+      const [batchQuantities, setBatchQuantities] = useState({});
+      const [productionNote, setProductionNote] = useState('');
+
+      // Modals
+      const [stockModalOpen, setStockModalOpen] = useState(false);
+      const [editingStock, setEditingStock] = useState(null);
+
+      const [restockModalOpen, setRestockModalOpen] = useState(false);
+
+      const [recipeModalOpen, setRecipeModalOpen] = useState(false);
+      const [editingRecipe, setEditingRecipe] = useState(null);
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      });
+
+      // --- Firebase Listener ---
+      useEffect(() => {
+        const unsubStocks = db.collection('stocks').onSnapshot(snapshot => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setStocks(data);
+          setLoading(false);
+        }, err => console.error("Error stocks:", err));
+
+        const unsubRecipes = db.collection('recipes').onSnapshot(snapshot => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setRecipes(data);
+        }, err => console.error("Error recipes:", err));
+
+        const unsubLogs = db.collection('logs').onSnapshot(snapshot => {
+          const data = snapshot.docs.map(doc => {
+            const docData = doc.data();
+            return {
+              id: doc.id,
+              ...docData,
+              createdTime: docData.timestamp ? docData.timestamp.toMillis() : Date.now()
+            };
+          });
+          data.sort((a, b) => b.createdTime - a.createdTime);
+          setLogs(data);
+        }, err => console.error("Error logs:", err));
+
+        return () => {
+          unsubStocks();
+          unsubRecipes();
+          unsubLogs();
+        };
+      }, []);
+
+      // Filtered Lists ตามการค้นหา
+      const filteredProductionRecipes = useMemo(() => {
+        return recipes.filter(r => r.name.toLowerCase().includes(searchProduction.toLowerCase()));
+      }, [recipes, searchProduction]);
+
+      const filteredStocks = useMemo(() => {
+        return stocks.filter(s => 
+          s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
+          (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase()))
+        );
+      }, [stocks, searchStock]);
+
+      const filteredRecipes = useMemo(() => {
+        return recipes.filter(r => r.name.toLowerCase().includes(searchRecipe.toLowerCase()));
+      }, [recipes, searchRecipe]);
+
+      const filteredLogs = useMemo(() => {
+        return logs.filter(l => 
+          (l.title && l.title.toLowerCase().includes(searchHistory.toLowerCase())) ||
+          (l.type && l.type.toLowerCase().includes(searchHistory.toLowerCase())) ||
+          (l.note && l.note.toLowerCase().includes(searchHistory.toLowerCase())) ||
+          (Array.isArray(l.details) && l.details.some(d => d.toLowerCase().includes(searchHistory.toLowerCase())))
+        );
+      }, [logs, searchHistory]);
+
+      // คำนวณหาวัตถุดิบที่เหลือน้อยกว่าจุดเตือนสั่งซื้อ
+      const lowStockItems = useMemo(() => {
+        return stocks.filter(item => {
+          const currentVal = Number(item.current) || 0;
+          const minVal = Number(item.minAlert) || 0;
+          return currentVal <= minVal;
+        });
+      }, [stocks]);
+
+      // --- Helper: Image Upload ---
+      const handleImageUpload = (e, callback) => {
+        const file = e.target.files[0];
+        if (file) {
+          if (file.size > 1.2 * 1024 * 1024) {
+            alert("รูปภาพมีขนาดใหญ่เกินไป กรุณาใช้รูปขนาดไม่เกิน 1.2MB ครับ");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => callback(reader.result);
+          reader.readAsDataURL(file);
+        }
+      };
+
+      // --- Handlers: Production ---
+      const handleQuantityChange = (recipeId, delta) => {
+        setBatchQuantities(prev => {
+          const current = prev[recipeId] || 0;
+          const updated = Math.max(0, current + delta);
+          return { ...prev, [recipeId]: updated };
+        });
+      };
+
+      const selectedProductionList = useMemo(() => {
+        return Object.entries(batchQuantities)
+          .filter(([_, qty]) => qty > 0)
+          .map(([recipeId, qty]) => {
+            const recipe = recipes.find(r => r.id === recipeId);
+            return {
+              recipeId,
+              name: recipe ? recipe.name : 'สูตรเครื่องดื่ม',
+              qty,
+              yieldInfo: recipe ? recipe.yieldInfo : '',
+              recipe
+            };
+          });
+      }, [batchQuantities, recipes]);
+
+      const handleConfirmProduction = async () => {
+        if (selectedProductionList.length === 0) return alert('กรุณาเลือกจำนวนหม้ออย่างน้อย 1 รายการ');
+
+        try {
+          const batch = db.batch();
+
+          const deductionsSummary = {};
+          selectedProductionList.forEach(item => {
+            if (item.recipe && item.recipe.ingredients) {
+              item.recipe.ingredients.forEach(ing => {
+                deductionsSummary[ing.stockId] = (deductionsSummary[ing.stockId] || 0) + (Number(ing.amount) * item.qty);
+              });
+            }
+          });
+
+          Object.entries(deductionsSummary).forEach(([stockId, deductAmount]) => {
+            const stockRef = db.collection('stocks').doc(stockId);
+            batch.update(stockRef, {
+              current: firebase.firestore.FieldValue.increment(-deductAmount)
+            });
+          });
+
+          const titleText = selectedProductionList.map(item => `${item.name} (${item.qty} หม้อ)`).join(', ');
+          
+          const detailsList = Object.entries(deductionsSummary).map(([stockId, deductAmount]) => {
+            const stockItem = stocks.find(s => s.id === stockId);
+            return `${stockItem ? stockItem.name : 'วัตถุดิบ'}: -${deductAmount} ${stockItem ? stockItem.unit : ''}`;
+          });
+
+          const now = new Date();
+          const day = now.getDate().toString().padStart(2, '0');
+          const month = (now.getMonth() + 1).toString().padStart(2, '0');
+          const year = now.getFullYear() + 543;
+          const hours = now.getHours().toString().padStart(2, '0');
+          const mins = now.getMinutes().toString().padStart(2, '0');
+          const timeStr = `${day}/${month}/${year} ${hours}:${mins} น.`;
+
+          const logRef = db.collection('logs').doc();
+          batch.set(logRef, {
+            datetime: timeStr,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            type: 'ต้มผลิต',
+            title: `ต้ม ${titleText}`,
+            details: detailsList,
+            note: productionNote || 'ต้มผลิตประจำวัน'
+          });
+
+          await batch.commit();
+          alert('บันทึกการผลิตและตัดสต๊อกเรียบร้อยแล้ว!');
+          setBatchQuantities({});
+          setProductionNote('');
+        } catch (error) {
+          console.error("Error confirming production:", error);
+          alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        }
+      };
+
+      // --- Handlers: History ---
+      const handleClearLogs = async () => {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ล้างประวัติย้อนหลังทั้งหมด"?')) {
+          try {
+            const snapshot = await db.collection('logs').get();
+            const batch = db.batch();
+            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            alert('ล้างประวัติเรียบร้อยแล้ว');
+          } catch(e) {
+            alert("เกิดข้อผิดพลาดในการล้างประวัติ");
+          }
+        }
+      };
+
+      // --- Handlers: Stock CRUD ---
+      const handleDeleteStock = async (id) => {
+        if (confirm('คุณต้องการลบวัตถุดิบรายการนี้ใช่หรือไม่?')) {
+          await db.collection('stocks').doc(id).delete();
+        }
+      };
+
+      const handleSaveStock = async (stockData) => {
+        try {
+          if (stockData.id) {
+            const id = stockData.id;
+            delete stockData.id;
+            await db.collection('stocks').doc(id).update(stockData);
+          } else {
+            delete stockData.id;
+            await db.collection('stocks').add(stockData);
+          }
+          setStockModalOpen(false);
+          alert('บันทึกข้อมูลวัตถุดิบเรียบร้อยแล้ว');
+        } catch (err) {
+          console.error("Error saving stock:", err);
+          alert("ไม่สามารถบันทึกวัตถุดิบได้ กรุณาลองใหม่อีกครั้ง");
+        }
+      };
+
+      // --- Handlers: Quick Restock (Batch Multiple Items) ---
+      const handleBatchRestock = async (restockItemsMap, globalNote) => {
+        try {
+          const itemsToProcess = Object.entries(restockItemsMap).filter(([_, qty]) => Number(qty) > 0);
+          if (itemsToProcess.length === 0) return alert('กรุณาระบุจำนวนวัตถุดิบที่ต้องการเติมอย่างน้อย 1 รายการ');
+
+          const batch = db.batch();
+          const detailsList = [];
+
+          itemsToProcess.forEach(([stockId, qty]) => {
+            const stockItem = stocks.find(s => s.id === stockId);
+            const amount = Number(qty);
+            if (stockItem && amount > 0) {
+              const stockRef = db.collection('stocks').doc(stockId);
+              batch.update(stockRef, {
+                current: firebase.firestore.FieldValue.increment(amount)
+              });
+              detailsList.push(`${stockItem.name}: +${amount} ${stockItem.unit}`);
+            }
+          });
+
+          const now = new Date();
+          const day = now.getDate().toString().padStart(2, '0');
+          const month = (now.getMonth() + 1).toString().padStart(2, '0');
+          const year = now.getFullYear() + 543;
+          const hours = now.getHours().toString().padStart(2, '0');
+          const mins = now.getMinutes().toString().padStart(2, '0');
+          const timeStr = `${day}/${month}/${year} ${hours}:${mins} น.`;
+
+          const logRef = db.collection('logs').doc();
+          batch.set(logRef, {
+            datetime: timeStr,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            type: 'เติมสต๊อก',
+            title: `เติมวัตถุดิบเข้าคลัง (${itemsToProcess.length} รายการ)`,
+            details: detailsList,
+            note: globalNote || 'เติมวัตถุดิบประจำวัน'
+          });
+
+          await batch.commit();
+          setRestockModalOpen(false);
+          alert(`เติมสต๊อกเรียบร้อยแล้วทั้งหมด ${itemsToProcess.length} รายการ!`);
+        } catch (err) {
+          console.error("Batch Restock error:", err);
+          alert("เกิดข้อผิดพลาดในการเติมสต๊อก");
+        }
+      };
+
+      // --- Handlers: BOM CRUD ---
+      const handleDeleteRecipe = async (id) => {
+        if (confirm('คุณต้องการลบสูตรเครื่องดื่มนี้ใช่หรือไม่?')) {
+          await db.collection('recipes').doc(id).delete();
+        }
+      };
+
+      const handleSaveRecipe = async (recipeObj) => {
+        try {
+          if (recipeObj.id) {
+            const id = recipeObj.id;
+            delete recipeObj.id;
+            await db.collection('recipes').doc(id).update(recipeObj);
+          } else {
+            delete recipeObj.id;
+            await db.collection('recipes').add(recipeObj);
+          }
+          setRecipeModalOpen(false);
+          alert('บันทึกสูตรเรียบร้อยแล้ว');
+        } catch (err) {
+          console.error("Error saving recipe:", err);
+          alert("ไม่สามารถบันทึกสูตรได้ กรุณาลองใหม่อีกครั้ง");
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between">
+          <div>
+            {/* Header & Navbar */}
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+              <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between border-b border-slate-100 sm:border-none">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-emerald-500 text-white p-2 rounded-xl shadow-md shadow-emerald-500/20">
+                    <i data-lucide="cup-soda" className="w-6 h-6"></i>
+                  </div>
+                  <div>
+                    <h1 className="font-bold text-slate-800 text-lg tracking-tight leading-none">Beverage Stock Pro</h1>
+                    <p className="text-[10px] text-slate-400 font-medium">ระบบจัดการวัตถุดิบการผลิต</p>
+                  </div>
+                </div>
+
+                {lowStockItems.length > 0 && (
+                  <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
+                    <i data-lucide="bell" className="w-3.5 h-3.5"></i>
+                    <span>ใกล้หมด ({lowStockItems.length})</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-slate-100/80 p-1.5 border-t border-slate-200/60">
+                <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto no-scrollbar justify-start sm:justify-center">
+                  <button onClick={() => setActiveTab('production')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                    <i data-lucide="flame" className="w-4 h-4"></i>
+                    <span>บันทึกการผลิต</span>
+                  </button>
+
+                  <button onClick={() => setActiveTab('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                    <i data-lucide="boxes" className="w-4 h-4"></i>
+                    <span>คลังวัตถุดิบ</span>
+                    {lowStockItems.length > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    )}
+                  </button>
+
+                  <button onClick={() => setActiveTab('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                    <i data-lucide="book-open" className="w-4 h-4"></i>
+                    <span>สูตรการผลิต (BOM)</span>
+                  </button>
+
+                  <button onClick={() => setActiveTab('history')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                    <i data-lucide="history" className="w-4 h-4"></i>
+                    <span>ประวัติย้อนหลัง</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {/* Main Content Body */}
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-6">
+
+              {loading ? (
+                <div className="text-center py-20 text-slate-400 font-medium text-sm">กำลังโหลดข้อมูลระบบ...</div>
+              ) : (
+                <>
+                  {/* ================= TAB 1: บันทึกการผลิต ================= */}
+                  {activeTab === 'production' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      
+                      <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
+                        <div className="mb-6">
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>📝</span> บันทึกต้มน้ำชาประจำวัน
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-1">กดเพิ่ม/ลดจำนวนหม้อต้มที่การ์ดเมนู เพื่อสรุปรายการต้มอัตโนมัติ</p>
+                        </div>
+
+                        {/* ช่องค้นหาเมนูสำหรับบันทึกการผลิต */}
+                        <div className="mb-4 relative">
+                          <input
+                            type="text"
+                            placeholder="🔍 ค้นหาชื่อสูตร / เมนูต้มชา..."
+                            value={searchProduction}
+                            onChange={(e) => setSearchProduction(e.target.value)}
+                            className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input pl-10"
+                          />
+                          <span className="absolute left-3.5 top-3 text-slate-400 text-xs">🔍</span>
+                          {searchProduction && (
+                            <button onClick={() => setSearchProduction('')} className="absolute right-3 top-2.5 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                          )}
+                        </div>
+
+                        {filteredProductionRecipes.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 text-sm">ไม่พบสูตรเครื่องดื่มที่ตรงกับการค้นหา</div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                            {filteredProductionRecipes.map(recipe => {
+                              const qty = batchQuantities[recipe.id] || 0;
+                              const isSelected = qty > 0;
+                              return (
+                                <div key={recipe.id} className={`border-2 rounded-2xl p-4 transition-all duration-200 relative flex flex-col justify-between ${isSelected ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                  
+                                  {isSelected && (
+                                    <div className="absolute top-3 right-3 bg-emerald-500 text-white rounded-full p-0.5">
+                                      <i data-lucide="check" className="w-4 h-4"></i>
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center space-x-3 mb-4">
+                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-sm" />
+                                    <div>
+                                      <h3 className="font-bold text-slate-800 text-base">{recipe.name}</h3>
+                                      <p className="text-xs text-slate-400">{recipe.yieldInfo}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-1.5 flex items-center justify-between">
+                                    <button onClick={() => handleQuantityChange(recipe.id, -1)} className="w-10 h-10 rounded-lg bg-white border border-slate-300 font-bold text-lg text-slate-700 hover:bg-slate-100 active:scale-95 transition flex items-center justify-center shadow-sm">
+                                      -
+                                    </button>
+                                    <div className="text-center">
+                                      <span className="font-bold text-lg text-slate-800">{qty}</span>
+                                      <span className="text-[10px] text-slate-400 block -mt-1 font-medium">หม้อ / ถัง</span>
+                                    </div>
+                                    <button onClick={() => handleQuantityChange(recipe.id, 1)} className="w-10 h-10 rounded-lg bg-emerald-500 font-bold text-lg text-white hover:bg-emerald-600 active:scale-95 transition flex items-center justify-center shadow-md shadow-emerald-500/20">
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div className="mt-4">
+                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">หมายเหตุ / ชื่อผู้ต้ม</label>
+                          <input type="text" placeholder="เช่น ต้มรอบเช้า โดย ช่างต้มเอ" value={productionNote} onChange={(e) => setProductionNote(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
+                        </div>
+                      </div>
+
+                      <div className="lg:col-span-5">
+                        <div className="bg-[#0b1329] text-white rounded-3xl p-6 sm:p-8 shadow-2xl sticky top-28 border border-slate-800">
+                          <div className="flex items-center gap-3 pb-4 border-b border-slate-800/80 mb-6">
+                            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400">
+                              <i data-lucide="clipboard-list" className="w-6 h-6"></i>
+                            </div>
+                            <div>
+                              <h2 className="font-bold text-lg text-white">สรุปรายการผลิตประจำวัน</h2>
+                              <p className="text-xs text-slate-400">สรุปรายการต้มชาที่เลือกต้มในรอบนี้</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 min-h-[160px] max-h-[360px] overflow-y-auto pr-1">
+                            {selectedProductionList.length === 0 ? (
+                              <div className="text-center py-12 text-slate-500 text-sm font-medium">ยังไม่มีรายการที่เลือก<br/><span className="text-xs text-slate-600">กดปุ่ม + ด้านซ้ายเพื่อเลือกรายการต้ม</span></div>
+                            ) : (
+                              selectedProductionList.map(item => (
+                                <div key={item.recipeId} className="bg-[#131c38] border border-slate-800/80 rounded-2xl p-4 flex justify-between items-center">
+                                  <div className="flex items-center space-x-3">
+                                    <img src={item.recipe?.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-700" />
+                                    <div>
+                                      <div className="font-bold text-sm text-white">{item.name}</div>
+                                      <div className="text-xs text-slate-400">{item.yieldInfo}</div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-emerald-400 font-extrabold text-lg">{item.qty} หม้อ</div>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+
+                          <button onClick={handleConfirmProduction} disabled={selectedProductionList.length === 0} className={`w-full mt-6 py-4 rounded-2xl font-bold text-base transition-all duration-200 flex items-center justify-center gap-2 ${selectedProductionList.length > 0 ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 active:scale-98' : 'bg-slate-800/60 text-slate-500 cursor-not-allowed'}`}>
+                            <i data-lucide="check-circle" className="w-5 h-5"></i>
+                            ยืนยันการต้ม & ตัดสต๊อกทันที
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* ================= TAB 2: คลังวัตถุดิบ ================= */}
+                  {activeTab === 'stock' && (
+                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
+                      
+                      {lowStockItems.length > 0 && (
+                        <div className="mb-8 bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 text-rose-900 shadow-sm">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center space-x-2 font-bold text-base text-rose-700">
+                              <i data-lucide="alert-triangle" className="w-5 h-5 text-rose-600 animate-bounce"></i>
+                              <span>เตือนการสั่งซื้อ: วัตถุดิบใกล้หมดคลัง ({lowStockItems.length} รายการ)</span>
+                            </div>
+                            <button onClick={() => setRestockModalOpen(true)} className="bg-rose-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl hover:bg-rose-700 transition shadow-md">
+                              📥 เติมสต๊อกทันที
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {lowStockItems.map(item => (
+                              <div key={item.id} className="bg-white p-3 rounded-xl border border-rose-200 flex items-center justify-between">
+                                <span className="font-bold text-sm text-slate-800">{item.name}</span>
+                                <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-lg">
+                                  เหลือ {item.current} {item.unit} (สั่งเพิ่มด่วน)
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                        <div>
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>📦</span> คลังวัตถุดิบคงเหลือ (Real-time Stock)
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-1">จัดการข้อมูลสต๊อก เติมสต๊อก หรือแก้ไขวัตถุดิบ</p>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+                            <i data-lucide="plus-circle" className="w-5 h-5"></i> 📥 เติมสต๊อกวัตถุดิบ
+                          </button>
+                          
+                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2">
+                            <i data-lucide="plus" className="w-5 h-5"></i> เพิ่มวัตถุดิบใหม่
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ช่องค้นหาคลังวัตถุดิบ */}
+                      <div className="mb-6 relative">
+                        <input
+                          type="text"
+                          placeholder="🔍 ค้นหาวัตถุดิบในคลัง หรือหมวดหมู่..."
+                          value={searchStock}
+                          onChange={(e) => setSearchStock(e.target.value)}
+                          className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
+                        />
+                        <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
+                        {searchStock && (
+                          <button onClick={() => setSearchStock('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                        )}
+                      </div>
+
+                      {filteredStocks.length === 0 ? (
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบวัตถุดิบที่ตรงกับการค้นหา</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {filteredStocks.map(item => {
+                            const currentVal = Number(item.current) || 0;
+                            const maxVal = Number(item.max) || 1;
+                            const minVal = Number(item.minAlert) || 0;
+                            const percentage = Math.min(100, Math.max(0, (currentVal / maxVal) * 100));
+                            const isLow = currentVal <= minVal;
+
+                            return (
+                              <div key={item.id} className={`border-2 rounded-3xl p-5 bg-white transition-all shadow-sm flex flex-col justify-between ${isLow ? 'border-rose-300 bg-rose-50/10' : 'border-slate-200 hover:border-slate-300'}`}>
+                                <div>
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center space-x-3">
+                                      <img src={item.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-sm" />
+                                      <div>
+                                        <h3 className="font-bold text-sm text-slate-800">{item.name}</h3>
+                                        <div className="flex items-center gap-1.5 mt-1">
+                                          <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-semibold border border-slate-200">{item.category || 'วัตถุดิบ'}</span>
+                                          {isLow && (
+                                            <span className="text-[10px] text-rose-600 bg-rose-100 font-extrabold px-2 py-0.5 rounded-md border border-rose-200">⚠️ ใกล้หมด</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex space-x-1">
+                                      <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-50"><i data-lucide="pencil" className="w-4 h-4"></i></button>
+                                      <button onClick={() => handleDeleteStock(item.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-50"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-baseline space-x-1.5 mb-2">
+                                    <span className={`text-3xl font-extrabold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>{currentVal}</span>
+                                    <span className="text-sm font-semibold text-emerald-600">{item.unit || 'หน่วย'}</span>
+                                    <span className="text-xs text-slate-400 ml-auto font-medium">สูงสุด {maxVal}</span>
+                                  </div>
+
+                                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2 border border-slate-200/60">
+                                    <div className={`h-full transition-all duration-300 ${isLow ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${percentage}%` }}></div>
+                                  </div>
+
+                                  <div className="text-[11px] text-slate-500 font-medium mb-4">
+                                    จุดเตือนสั่งซื้อ: <span className={isLow ? 'text-rose-600 font-extrabold' : 'text-slate-700 font-bold'}>{minVal} {item.unit}</span>
+                                  </div>
+                                </div>
+
+                                <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="w-full py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold text-xs rounded-xl transition border border-slate-200">
+                                  ✏️ แก้ไขข้อมูล / ยอดคงเหลือ
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ================= TAB 3: สูตรการผลิต (BOM) ================= */}
+                  {activeTab === 'bom' && (
+                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                        <div>
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>📖</span> รายการสูตรเครื่องดื่มมาตรฐาน (Bill of Materials)
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-1">จัดการสูตร เพิ่ม แก้ไขสัดส่วนส่วนผสม หรือลบสูตรที่ไม่ต้องการ</p>
+                        </div>
+                        <button onClick={() => { setEditingRecipe(null); setRecipeModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                          <i data-lucide="plus" className="w-5 h-5"></i> สร้างสูตรใหม่
+                        </button>
+                      </div>
+
+                      {/* ช่องค้นหาสูตรการผลิต */}
+                      <div className="mb-6 relative">
+                        <input
+                          type="text"
+                          placeholder="🔍 ค้นหาชื่อสูตรเครื่องดื่ม..."
+                          value={searchRecipe}
+                          onChange={(e) => setSearchRecipe(e.target.value)}
+                          className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
+                        />
+                        <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
+                        {searchRecipe && (
+                          <button onClick={() => setSearchRecipe('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                        )}
+                      </div>
+
+                      {filteredRecipes.length === 0 ? (
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบสูตรเครื่องดื่มที่ตรงกับการค้นหา</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {filteredRecipes.map(recipe => (
+                            <div key={recipe.id} className="border border-slate-200/80 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col justify-between">
+                              <div>
+                                <div className="bg-[#0b1329] text-white p-5 flex justify-between items-center">
+                                  <div className="flex items-center space-x-4">
+                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-2xl object-cover border border-slate-700 shadow-md" />
+                                    <div>
+                                      <h3 className="font-bold text-base text-white">{recipe.name}</h3>
+                                      <p className="text-xs text-slate-400 mt-0.5">{recipe.yieldInfo}</p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex space-x-1">
+                                    <button onClick={() => { setEditingRecipe(recipe); setRecipeModalOpen(true); }} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"><i data-lucide="pencil" className="w-4 h-4"></i></button>
+                                    <button onClick={() => handleDeleteRecipe(recipe.id)} className="p-2 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-slate-800 transition"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                  </div>
+                                </div>
+
+                                <div className="p-5 space-y-2 bg-slate-50/50">
+                                  <div className="text-xs font-bold text-slate-400 mb-2">ส่วนผสมต่อ 1 หม้อต้ม</div>
+                                  {recipe.ingredients && recipe.ingredients.map((ing, idx) => {
+                                    const stockItem = stocks.find(s => s.id === ing.stockId);
+                                    return (
+                                      <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-100 text-xs">
+                                        <span className="font-semibold text-slate-700">{stockItem ? stockItem.name : '⚠️ วัตถุดิบถูกลบ'}</span>
+                                        <span className="font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">{ing.amount} {stockItem ? stockItem.unit : ''}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <button onClick={() => { setEditingRecipe(recipe); setRecipeModalOpen(true); }} className="w-full py-3 bg-white text-blue-600 font-bold text-xs hover:bg-blue-50 border-t border-slate-100 transition flex items-center justify-center gap-1">
+                                <i data-lucide="pencil" className="w-3.5 h-3.5"></i> แก้ไขส่วนผสมสูตรนี้
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ================= TAB 4: ประวัติย้อนหลัง ================= */}
+                  {activeTab === 'history' && (
+                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                        <div>
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>📜</span> ประวัติการใช้งานสต๊อก (Movement Logs)
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มตัดสต๊อก และการเติมสต๊อกย้อนหลัง</p>
+                        </div>
+                        {logs.length > 0 && (
+                          <button onClick={handleClearLogs} className="bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs px-4 py-2.5 rounded-2xl hover:bg-rose-100 transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="trash-2" className="w-4 h-4"></i> ล้างประวัติทั้งหมด
+                          </button>
+                        )}
+                      </div>
+
+                      {/* ช่องค้นหาประวัติย้อนหลัง */}
+                      <div className="mb-6 relative">
+                        <input
+                          type="text"
+                          placeholder="🔍 ค้นหาประวัติ เช่น ชื่อวัตถุดิบ / ผู้ต้ม / เติมสต๊อก / ต้มผลิต..."
+                          value={searchHistory}
+                          onChange={(e) => setSearchHistory(e.target.value)}
+                          className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
+                        />
+                        <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
+                        {searchHistory && (
+                          <button onClick={() => setSearchHistory('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                        )}
+                      </div>
+
+                      {filteredLogs.length === 0 ? (
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติรายการที่ตรงกับการค้นหา</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs sm:text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50">
+                                <th className="py-3.5 px-4 rounded-l-xl">วัน-เวลา</th>
+                                <th className="py-3.5 px-4">ประเภท</th>
+                                <th className="py-3.5 px-4">รายการ</th>
+                                <th className="py-3.5 px-4">รายละเอียด</th>
+                                <th className="py-3.5 px-4 rounded-r-xl">หมายเหตุ</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {filteredLogs.map(log => (
+                                <tr key={log.id} className="hover:bg-slate-50/80 transition">
+                                  <td className="py-4 px-4 text-slate-500 font-medium whitespace-nowrap">{log.datetime || '-'}</td>
+                                  <td className="py-4 px-4 whitespace-nowrap">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${log.type === 'เติมสต๊อก' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                      {log.type || 'ทั่วไป'}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-4 font-bold text-slate-800">{log.title || '-'}</td>
+                                  <td className="py-4 px-4 text-slate-600">
+                                    {Array.isArray(log.details) ? (
+                                      <ul className="list-disc list-inside space-y-0.5">
+                                        {log.details.map((d, i) => <li key={i}>{d}</li>)}
+                                      </ul>
+                                    ) : (
+                                      <span>{log.details || '-'}</span>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-4 text-slate-400 italic">{log.note || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+            </main>
+          </div>
+
+          <footer className="text-center py-6 text-xs text-slate-400 font-medium">
+            Beverage Stock Pro &copy; 2026 - ระบบจัดการสต๊อกชาแบบเรียลไทม์
+          </footer>
+
+          {/* ================= MODAL: เพิ่ม/แก้ไข วัตถุดิบ ================= */}
+          {stockModalOpen && (
+            <StockFormModal
+              stock={editingStock}
+              onClose={() => setStockModalOpen(false)}
+              onSave={handleSaveStock}
+              handleImageUpload={handleImageUpload}
+            />
+          )}
+
+          {/* ================= MODAL: เติมสต๊อกแบบรวมทุกรายการ (Batch Restock) ================= */}
+          {restockModalOpen && (
+            <BatchRestockModal
+              stocks={stocks}
+              onClose={() => setRestockModalOpen(false)}
+              onConfirm={handleBatchRestock}
+            />
+          )}
+
+          {/* ================= MODAL: เพิ่ม/แก้ไข สูตร BOM ================= */}
+          {recipeModalOpen && (
+            <RecipeFormModal
+              recipe={editingRecipe}
+              stocks={stocks}
+              onClose={() => setRecipeModalOpen(false)}
+              onSave={handleSaveRecipe}
+              handleImageUpload={handleImageUpload}
+            />
+          )}
+
+        </div>
+      );
+    }
+
+    // Modal เติมสต๊อกแบบรวมทุกวัตถุดิบ (Batch Restock) พร้อมช่องค้นหา
+    function BatchRestockModal({ stocks, onClose, onConfirm }) {
+      const [amounts, setAmounts] = useState({});
+      const [note, setNote] = useState('');
+      const [searchRestock, setSearchRestock] = useState('');
+
+      const filteredRestockStocks = useMemo(() => {
+        return stocks.filter(s => 
+          s.name.toLowerCase().includes(searchRestock.toLowerCase()) || 
+          (s.category && s.category.toLowerCase().includes(searchRestock.toLowerCase()))
+        );
+      }, [stocks, searchRestock]);
+
+      const handleAmountChange = (stockId, delta) => {
+        setAmounts(prev => {
+          const current = prev[stockId] || 0;
+          const updated = Math.max(0, current + delta);
+          return { ...prev, [stockId]: updated };
+        });
+      };
+
+      const handleDirectInput = (stockId, val) => {
+        const num = parseFloat(val);
+        setAmounts(prev => ({
+          ...prev,
+          [stockId]: isNaN(num) || num < 0 ? 0 : num
+        }));
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onConfirm(amounts, note);
+      };
+
+      const totalItemsToRestock = Object.values(amounts).filter(v => v > 0).length;
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    <span>📥</span> เติมสต๊อกวัตถุดิบเข้าคลัง
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">ระบุจำนวนที่ต้องการเติมเพิ่มในช่องด้านขวาของแต่ละรายการ</p>
+                </div>
+                {totalItemsToRestock > 0 && (
+                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">
+                    เตรียมเติม {totalItemsToRestock} รายการ
+                  </span>
+                )}
+              </div>
+
+              {/* ช่องค้นหาวัตถุดิบใน Modal เติมสต๊อก */}
+              <div className="mb-4 relative">
+                <input
+                  type="text"
+                  placeholder="🔍 ค้นหาวัตถุดิบที่ต้องการเติม..."
+                  value={searchRestock}
+                  onChange={(e) => setSearchRestock(e.target.value)}
+                  className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input pl-10"
+                />
+                <span className="absolute left-3.5 top-3 text-slate-400 text-xs">🔍</span>
+                {searchRestock && (
+                  <button onClick={() => setSearchRestock('')} className="absolute right-3 top-2.5 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                )}
+              </div>
+
+              {filteredRestockStocks.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">ไม่พบวัตถุดิบที่ต้องการเติมสต๊อก</div>
+              ) : (
+                <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-1">
+                  {filteredRestockStocks.map(item => {
+                    const addQty = amounts[item.id] || 0;
+                    const isLow = Number(item.current) <= Number(item.minAlert);
+
+                    return (
+                      <div key={item.id} className={`p-3.5 rounded-2xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${addQty > 0 ? 'border-emerald-500 bg-emerald-50/20 shadow-sm' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex items-center space-x-3">
+                          <img src={item.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" />
+                          <div>
+                            <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                              <span>{item.name}</span>
+                              {isLow && <span className="text-[10px] text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md font-extrabold">⚠️ ใกล้หมด</span>}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              คงเหลือปัจจุบัน: <span className="font-bold text-slate-700">{item.current}</span> {item.unit}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                          <span className="text-xs text-slate-400 mr-1 font-medium hidden sm:inline">เติมเพิ่ม:</span>
+                          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            <button type="button" onClick={() => handleAmountChange(item.id, -1)} className="w-9 h-9 bg-white text-slate-700 font-extrabold rounded-lg hover:bg-slate-200 active:scale-95 transition flex items-center justify-center shadow-sm">
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={addQty === 0 ? '' : addQty}
+                              placeholder="0"
+                              onChange={(e) => handleDirectInput(item.id, e.target.value)}
+                              className="w-16 text-center font-extrabold text-sm text-emerald-600 bg-transparent focus:outline-none"
+                            />
+                            <button type="button" onClick={() => handleAmountChange(item.id, 1)} className="w-9 h-9 bg-emerald-500 text-white font-extrabold rounded-lg hover:bg-emerald-600 active:scale-95 transition flex items-center justify-center shadow-sm">
+                              +
+                            </button>
+                          </div>
+                          <span className="text-xs font-bold text-slate-600 min-w-[35px]">{item.unit}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t border-slate-100">
+              <div className="mb-4">
+                <input type="text" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี) เช่น สั่งซื้อประจำสัปดาห์" value={note} onChange={(e) => setNote(e.target.value)} className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input" />
+              </div>
+
+              <div className="flex space-x-3">
+                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition text-xs sm:text-sm">
+                  ยกเลิก
+                </button>
+                <button type="submit" disabled={totalItemsToRestock === 0} className={`w-1/2 py-3 rounded-2xl font-bold transition text-xs sm:text-sm shadow-lg ${totalItemsToRestock > 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                  บันทึกเติมสต๊อก ({totalItemsToRestock} รายการ)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal วัตถุดิบ
+    function StockFormModal({ stock, onClose, onSave, handleImageUpload }) {
+      const [image, setImage] = useState(stock?.image || DEFAULT_IMAGE);
+      const [unit, setUnit] = useState(stock?.unit || 'ถุง');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        onSave({
+          id: stock?.id || null,
+          name: formData.get('name'),
+          category: formData.get('category'),
+          current: parseFloat(formData.get('current')) || 0,
+          max: parseFloat(formData.get('max')) || 0,
+          minAlert: parseFloat(formData.get('minAlert')) || 0,
+          unit: unit,
+          image: image
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl">
+            <h3 className="font-bold text-slate-800 text-lg mb-6 pb-3 border-b border-slate-100 flex items-center gap-2">
+              {stock ? '✏️ แก้ไขข้อมูลวัตถุดิบ' : '➕ เพิ่มวัตถุดิบใหม่'}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
+              <div className="flex items-center space-x-4 mb-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <img src={image} className="w-16 h-16 rounded-2xl object-cover border border-slate-300 shadow-sm" />
+                <div className="flex-1">
+                  <label className="block font-semibold text-slate-700 mb-1">รูปวัตถุดิบ</label>
+                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImage)} className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:text-white font-semibold cursor-pointer" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">ชื่อวัตถุดิบ</label>
+                <input name="name" defaultValue={stock?.name || ''} required placeholder="เช่น ชาตรามือ, นมข้นหวาน" className="w-full px-4 py-2.5 rounded-xl custom-input" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">หมวดหมู่</label>
+                  <input name="category" defaultValue={stock?.category || 'ผงชา/กาแฟ'} required className="w-full px-4 py-2.5 rounded-xl custom-input" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">หน่วยนับวัตถุดิบ</label>
+                  <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full px-3 py-2.5 rounded-xl custom-input font-semibold">
+                    <option value="ถุง">ถุง</option>
+                    <option value="กระป๋อง">กระป๋อง</option>
+                    <option value="ขวด">ขวด</option>
+                    <option value="กล่อง">กล่อง</option>
+                    <option value="กิโลกรัม">กิโลกรัม (kg)</option>
+                    <option value="ลิตร">ลิตร (L)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">ยอดคงเหลือ</label>
+                  <input type="number" step="0.01" name="current" defaultValue={stock?.current ?? 0} required className="w-full px-3 py-2.5 text-center font-bold rounded-xl custom-input" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">สต๊อกสูงสุด</label>
+                  <input type="number" step="0.01" name="max" defaultValue={stock?.max ?? 10} required className="w-full px-3 py-2.5 text-center rounded-xl custom-input" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">จุดเตือนสั่งซื้อ</label>
+                  <input type="number" step="0.01" name="minAlert" defaultValue={stock?.minAlert ?? 2} required className="w-full px-3 py-2.5 text-center rounded-xl custom-input text-rose-600 font-bold" />
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-4 border-t border-slate-100">
+                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition">ยกเลิก</button>
+                <button type="submit" className="w-1/2 py-3 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition shadow-lg shadow-emerald-500/20">บันทึกวัตถุดิบ</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal สูตร BOM
+    function RecipeFormModal({ recipe, stocks, onClose, onSave, handleImageUpload }) {
+      const [name, setName] = useState(recipe?.name || '');
+      const [yieldInfo, setYieldInfo] = useState(recipe?.yieldInfo || '1 หม้อต้ม (ประมาณ 30 แก้ว)');
+      const [image, setImage] = useState(recipe?.image || DEFAULT_IMAGE);
+      const [ingredients, setIngredients] = useState(
+        recipe?.ingredients || [{ stockId: stocks[0]?.id || '', amount: 1 }]
+      );
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (ingredients.length === 0) return alert('กรุณาเพิ่มส่วนผสมอย่างน้อย 1 รายการ');
+        onSave({ id: recipe?.id || null, name, yieldInfo, image, ingredients });
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-slate-800 text-lg mb-6 pb-3 border-b border-slate-100 flex items-center gap-2">
+              {recipe ? '✏️ แก้ไขสูตรการผลิต' : '➕ สร้างสูตรการผลิตใหม่'}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
+              <div className="flex items-center space-x-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <img src={image} className="w-16 h-16 rounded-2xl object-cover border border-slate-300 shadow-sm" />
+                <div className="flex-1">
+                  <label className="block font-semibold text-slate-700 mb-1">เลือกรูปเมนูเครื่องดื่ม</label>
+                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImage)} className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-blue-600 file:text-white font-semibold cursor-pointer" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">ชื่อสูตร / ชื่อเมนู</label>
+                <input value={name} onChange={e => setName(e.target.value)} required placeholder="เช่น ชาไทยสูตรเข้มข้น" className="w-full px-4 py-2.5 rounded-xl custom-input" />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">รายละเอียดปริมาณที่ได้</label>
+                <input value={yieldInfo} onChange={e => setYieldInfo(e.target.value)} required placeholder="เช่น 1 หม้อต้ม (ประมาณ 30 แก้ว)" className="w-full px-4 py-2.5 rounded-xl custom-input" />
+              </div>
+
+              <div className="pt-2">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="font-bold text-slate-800">ส่วนผสมที่ใช้ต่อ 1 หม้อต้ม</label>
+                  <button type="button" onClick={() => setIngredients([...ingredients, { stockId: stocks[0]?.id || '', amount: 1 }])} className="text-blue-600 font-bold hover:underline text-xs">+ เพิ่มส่วนผสม</button>
+                </div>
+                
+                {stocks.length === 0 ? (
+                  <div className="text-xs text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-200">ยังไม่มีวัตถุดิบในคลัง กรุณาเพิ่มวัตถุดิบก่อนสร้างสูตรครับ</div>
+                ) : (
+                  <div className="space-y-2">
+                    {ingredients.map((ing, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+                        <select value={ing.stockId} onChange={e => {
+                          const updated = [...ingredients];
+                          updated[idx].stockId = e.target.value;
+                          setIngredients(updated);
+                        }} className="flex-1 px-3 py-2 rounded-xl custom-input font-medium">
+                          {stocks.map(s => <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>)}
+                        </select>
+                        <input type="number" step="0.01" value={ing.amount} onChange={e => {
+                          const updated = [...ingredients];
+                          updated[idx].amount = parseFloat(e.target.value) || 0;
+                          setIngredients(updated);
+                        }} required className="w-24 px-3 py-2 rounded-xl custom-input text-right font-bold" />
+                        <button type="button" onClick={() => setIngredients(ingredients.filter((_, i) => i !== idx))} className="text-rose-500 hover:text-rose-700 p-2 font-bold text-base">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3 pt-4 border-t border-slate-100">
+                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition">ยกเลิก</button>
+                <button type="submit" className="w-1/2 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">บันทึกสูตร</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
