@@ -65,7 +65,7 @@
     }
     const db = firebase.firestore();
 
-    // 🟢 ระบบ Offline Persistence เร่งความเร็วข้อมูล (โหลดติดปั๊บแม้เน็ตช้า)
+    // 🟢 ระบบ Offline Persistence เร่งความเร็วข้อมูล
     db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
       if (err.code === 'failed-precondition') {
         console.log('Offline Persistence: มีการเปิดเว็บหลายแท็บพร้อมกัน');
@@ -812,11 +812,11 @@
                           <p className="text-xs text-slate-400 mt-1">กดเพิ่ม/ลดจำนวนหม้อต้มที่การ์ดเมนู เพื่อสรุปรายการต้มอัตโนมัติ</p>
                         </div>
 
-                        {/* ช่องค้นหาเมนูสำหรับบันทึกการผลิต */}
+                        {/* ช่องค้นหาเมนูสำหรับบันทึกการผลิต (แก้ไอคอนแว่นขยายแล้ว) */}
                         <div className="mb-4 relative">
                           <input
                             type="text"
-                            placeholder="🔍 ค้นหาชื่อสูตร / เมนูต้มชา..."
+                            placeholder="ค้นหาชื่อสูตร / เมนูต้มชา..."
                             value={searchProduction}
                             onChange={(e) => setSearchProduction(e.target.value)}
                             className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input pl-10"
@@ -965,11 +965,11 @@
                         </div>
                       </div>
 
-                      {/* ช่องค้นหาคลังวัตถุดิบ */}
+                      {/* ช่องค้นหาคลังวัตถุดิบ (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
-                          placeholder="🔍 ค้นหาวัตถุดิบในคลัง หรือหมวดหมู่..."
+                          placeholder="ค้นหาวัตถุดิบในคลัง หรือหมวดหมู่..."
                           value={searchStock}
                           onChange={(e) => setSearchStock(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1048,11 +1048,11 @@
                         </button>
                       </div>
 
-                      {/* ช่องค้นหาสูตร */}
+                      {/* ช่องค้นหาสูตร (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
-                          placeholder="🔍 ค้นหาชื่อสูตร..."
+                          placeholder="ค้นหาชื่อสูตร..."
                           value={searchRecipe}
                           onChange={(e) => setSearchRecipe(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1126,11 +1126,11 @@
                         )}
                       </div>
 
-                      {/* ช่องค้นหาประวัติ */}
+                      {/* ช่องค้นหาประวัติ (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
-                          placeholder="🔍 ค้นหาตามวันที่, ประเภท, ชื่อรายการ หรือหมายเหตุ..."
+                          placeholder="ค้นหาตามวันที่, ประเภท, ชื่อรายการ หรือหมายเหตุ..."
                           value={searchHistory}
                           onChange={(e) => setSearchHistory(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
