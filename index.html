@@ -41,6 +41,14 @@
       box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
       outline: none;
     }
+
+    /* Print Styles */
+    @media print {
+      body * { visibility: hidden; }
+      #printable-report, #printable-report * { visibility: visible; }
+      #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+      .no-print { display: none !important; }
+    }
   </style>
 </head>
 <body class="text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
@@ -65,7 +73,6 @@
     }
     const db = firebase.firestore();
 
-    // 🟢 ระบบ Offline Persistence เร่งความเร็วข้อมูล
     db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
       if (err.code === 'failed-precondition') {
         console.log('Offline Persistence: มีการเปิดเว็บหลายแท็บพร้อมกัน');
@@ -137,7 +144,7 @@
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อวัตถุดิบ <span className="text-rose-500">*</span></label>
-                <input type="text" placeholder="เช่น ผงชาไทยตรามือ" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                <input type="text" placeholder="เช่น ผงชาไทยตรามือ / ยาชนิด A / ไซรัปส้ม" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -146,6 +153,7 @@
                   <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2.5 text-sm rounded-xl custom-input">
                     <option value="ชา/กาแฟ">ชา / กาแฟ</option>
                     <option value="นม/น้ำตาล">นม / น้ำตาล / สารให้ความหวาน</option>
+                    <option value="ไซรัป/ยา">ไซรัป / ยาปรุง</option>
                     <option value="ท็อปปิ้ง">ท็อปปิ้ง / ไข่มุก</option>
                     <option value="บรรจุภัณฑ์">บรรจุภัณฑ์ / แก้ว / หลอด</option>
                     <option value="อื่นๆ">อื่นๆ</option>
@@ -153,7 +161,7 @@
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียก <span className="text-rose-500">*</span></label>
-                  <input type="text" placeholder="เช่น กรัม, มล., ซอง" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                  <input type="text" placeholder="เช่น กรัม, มล., ขวด" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
                 </div>
               </div>
 
@@ -261,7 +269,7 @@
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุการเติมวัตถุดิบ</label>
                   <input
                     type="text"
-                    placeholder="เช่น สั่งซื้อจากซัพพลายเออร์ A / ซื้อจากแม็คโคร"
+                    placeholder="เช่น สั่งซื้อเพิ่มจากซัพพลายเออร์ / แม็คโคร"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
@@ -280,7 +288,241 @@
     }
 
     // ==========================================
-    // 3. MODAL: เพิ่ม/แก้ไข สูตรเครื่องดื่ม (BOM Modal)
+    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
+    // ==========================================
+    function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
+      const [stockId, setStockId] = useState('');
+      const [qty, setQty] = useState('');
+      const [note, setNote] = useState('');
+
+      useEffect(() => {
+        if (isOpen && stocks.length > 0) {
+          setStockId(stocks[0].id);
+          setQty('');
+          setNote('แบ่งขาย / ตั้งขายหน้าร้าน');
+        }
+      }, [isOpen, stocks]);
+
+      if (!isOpen) return null;
+
+      const selectedStock = stocks.find(s => s.id === stockId);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!stockId || !qty || Number(qty) <= 0) return alert('กรุณาระบุวัตถุดิบและจำนวนที่ถูกต้อง');
+        if (selectedStock && Number(qty) > Number(selectedStock.current)) {
+          return alert(`ไม่สามารถย้ายได้ เนื่องจากจำนวนที่ย้ายมากกว่าสต๊อกคงเหลือที่มี (${selectedStock.current} ${selectedStock.unit})`);
+        }
+        onConfirmTransfer(stockId, Number(qty), note);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i data-lucide="share" className="w-5 h-5 text-amber-600"></i>
+                📤 ย้ายวัตถุดิบไปหน้าร้าน
+              </h3>
+              <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                <i data-lucide="x" className="w-5 h-5"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบ / ยา / ไซรัป <span className="text-rose-500">*</span></label>
+                <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input font-medium">
+                  {stocks.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่ต้องการย้ายออกไปหน้าร้าน <span className="text-rose-500">*</span></label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={qty}
+                    onChange={e => setQty(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 text-sm rounded-xl custom-input font-bold text-center text-amber-700"
+                  />
+                  <span className="text-xs font-bold text-slate-500 min-w-[40px]">{selectedStock ? selectedStock.unit : ''}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ</label>
+                <input
+                  type="text"
+                  placeholder="เช่น ย้ายยาแบ่งขาย 50 เม็ด / ไซรัป 2 ขวด"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">ยืนยันการย้าย</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 4. MODAL: สรุปรายงานประจำวัน & สั่งพิมพ์ (Print Summary Modal)
+    // ==========================================
+    function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems }) {
+      if (!isOpen) return null;
+
+      const todayStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // ดึงเฉพาะรายการต้มของวันนี้
+      const todayLogs = logs.filter(l => {
+        if (!l.datetime) return false;
+        const now = new Date();
+        const d = now.getDate().toString().padStart(2, '0');
+        const m = (now.getMonth() + 1).toString().padStart(2, '0');
+        const y = now.getFullYear() + 543;
+        return l.datetime.includes(`${d}/${m}/${y}`);
+      });
+
+      // รวมยอดการต้มน้ำชาประจำวัน
+      const productionLogs = todayLogs.filter(l => l.type === 'ต้มผลิต');
+      let totalPots = 0;
+      const recipeSummary = {};
+
+      productionLogs.forEach(l => {
+        // ดึงยอดจาก title เช่น "ต้ม ชาไทย (2 หม้อ), นมสด (1 หม้อ)"
+        if (l.title) {
+          const items = l.title.replace('ต้ม ', '').split(', ');
+          items.forEach(item => {
+            const match = item.match(/(.+) \((\d+) หม้อ\)/);
+            if (match) {
+              const name = match[1].trim();
+              const count = parseInt(match[2], 10);
+              recipeSummary[name] = (recipeSummary[name] || 0) + count;
+              totalPots += count;
+            }
+          });
+        }
+      });
+
+      // ดึงรายการย้ายไปหน้าร้านวันนี้
+      const transferLogs = todayLogs.filter(l => l.type === 'ย้ายไปหน้าร้าน');
+
+      const handlePrint = () => {
+        window.print();
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
+            <div id="printable-report" className="overflow-y-auto pr-1">
+              
+              {/* Report Header */}
+              <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
+                <div>
+                  <h1 className="text-2xl font-black text-slate-900">📄 สรุปรายงานการผลิต & สต๊อกประจำวัน</h1>
+                  <p className="text-xs font-semibold text-slate-500 mt-1">ประจำวันที่: {todayStr}</p>
+                </div>
+                <div className="text-right text-xs text-slate-400">
+                  Beverage Stock Pro
+                </div>
+              </div>
+
+              {/* Section 1: สรุปการต้มน้ำชา */}
+              <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                    🍵 สรุปการต้มน้ำชาประจำวัน
+                  </h3>
+                  <span className="text-xs font-extrabold bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full">
+                    รวมทั้งหมด {totalPots} หม้อ
+                  </span>
+                </div>
+
+                {Object.keys(recipeSummary).length === 0 ? (
+                  <div className="text-xs text-slate-400 italic">ยังไม่มีบันทึกการต้มชาในวันนี้</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(recipeSummary).map(([name, count]) => (
+                      <div key={name} className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
+                        <span className="font-semibold text-slate-700">{name}</span>
+                        <span className="font-bold text-emerald-600">{count} หม้อ</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: รายการวัตถุดิบใกล้หมด (Warning) */}
+              <div className="mb-6 bg-rose-50/60 p-4 rounded-2xl border border-rose-200">
+                <h3 className="font-bold text-rose-800 text-sm mb-3 flex items-center gap-1.5">
+                  ⚠️ วัตถุดิบใกล้หมด / ต้องสั่งซื้อเพิ่ม ({lowStockItems.length} รายการ)
+                </h3>
+
+                {lowStockItems.length === 0 ? (
+                  <div className="text-xs text-slate-500 italic">ไม่มีวัตถุดิบใกล้หมด สต๊อกอยู่ในเกณฑ์ปกติ</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {lowStockItems.map(s => (
+                      <div key={s.id} className="bg-white p-2.5 rounded-xl border border-rose-200 flex justify-between items-center">
+                        <span className="font-semibold text-slate-800">{s.name}</span>
+                        <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                          เหลือ {s.current} {s.unit}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 3: สรุปการย้ายไปหน้าร้าน */}
+              <div className="mb-4 bg-amber-50/60 p-4 rounded-2xl border border-amber-200">
+                <h3 className="font-bold text-amber-900 text-sm mb-3 flex items-center gap-1.5">
+                  📤 สรุปการย้ายวัตถุดิบไปหน้าร้านวันนี้
+                </h3>
+
+                {transferLogs.length === 0 ? (
+                  <div className="text-xs text-slate-500 italic">ไม่มีรายการย้ายไปหน้าร้านในวันนี้</div>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    {transferLogs.map(l => (
+                      <div key={l.id} className="bg-white p-2.5 rounded-xl border border-amber-200 flex justify-between items-center">
+                        <span className="font-semibold text-slate-800">{l.title}</span>
+                        <span className="text-slate-500">{l.datetime}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Actions */}
+            <div className="pt-4 border-t border-slate-100 flex gap-3 mt-4 no-print">
+              <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">
+                ปิดหน้าต่าง
+              </button>
+              <button type="button" onClick={handlePrint} className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-lg shadow-slate-900/20 transition flex items-center justify-center gap-2">
+                <i data-lucide="printer" className="w-4 h-4"></i> สั่งพิมพ์ / เซฟ PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. MODAL: เพิ่ม/แก้ไข สูตรเครื่องดื่ม (BOM Modal)
     // ==========================================
     function RecipeModal({ isOpen, onClose, onSave, editingRecipe, stocks, handleImageUpload }) {
       const [name, setName] = useState('');
@@ -444,7 +686,7 @@
       const [logs, setLogs] = useState([]);
       const [loading, setLoading] = useState(true);
 
-      // Search States ในแต่ละส่วน
+      // Search States
       const [searchProduction, setSearchProduction] = useState('');
       const [searchStock, setSearchStock] = useState('');
       const [searchRecipe, setSearchRecipe] = useState('');
@@ -458,6 +700,8 @@
       const [editingStock, setEditingStock] = useState(null);
 
       const [restockModalOpen, setRestockModalOpen] = useState(false);
+      const [transferModalOpen, setTransferModalOpen] = useState(false);
+      const [printModalOpen, setPrintModalOpen] = useState(false);
 
       const [recipeModalOpen, setRecipeModalOpen] = useState(false);
       const [editingRecipe, setEditingRecipe] = useState(null);
@@ -499,7 +743,7 @@
         };
       }, []);
 
-      // Filtered Lists ตามการค้นหา
+      // Filtered Lists
       const filteredProductionRecipes = useMemo(() => {
         return recipes.filter(r => r.name.toLowerCase().includes(searchProduction.toLowerCase()));
       }, [recipes, searchProduction]);
@@ -533,7 +777,7 @@
         });
       }, [stocks]);
 
-      // --- Helper: Image Upload ---
+      // Helper: Image Upload
       const handleImageUpload = (e, callback) => {
         const file = e.target.files[0];
         if (file) {
@@ -547,7 +791,7 @@
         }
       };
 
-      // --- Handlers: Production ---
+      // --- Production Handlers ---
       const handleQuantityChange = (recipeId, delta) => {
         setBatchQuantities(prev => {
           const current = prev[recipeId] || 0;
@@ -628,7 +872,7 @@
         }
       };
 
-      // --- Handlers: History ---
+      // --- History Handlers ---
       const handleClearLogs = async () => {
         if (confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ล้างประวัติย้อนหลังทั้งหมด"?')) {
           try {
@@ -643,7 +887,7 @@
         }
       };
 
-      // --- Handlers: Stock CRUD ---
+      // --- Stock Handlers ---
       const handleDeleteStock = async (id) => {
         if (confirm('คุณต้องการลบวัตถุดิบรายการนี้ใช่หรือไม่?')) {
           await db.collection('stocks').doc(id).delete();
@@ -668,7 +912,7 @@
         }
       };
 
-      // --- Handlers: Quick Restock (Batch Multiple Items) ---
+      // --- Restock Handlers ---
       const handleBatchRestock = async (restockItemsMap, globalNote) => {
         try {
           const itemsToProcess = Object.entries(restockItemsMap).filter(([_, qty]) => Number(qty) > 0);
@@ -716,7 +960,47 @@
         }
       };
 
-      // --- Handlers: BOM CRUD ---
+      // --- Transfer to Storefront Handler ---
+      const handleTransferToStorefront = async (stockId, qty, note) => {
+        try {
+          const stockItem = stocks.find(s => s.id === stockId);
+          if (!stockItem) return;
+
+          const batch = db.batch();
+          const stockRef = db.collection('stocks').doc(stockId);
+
+          batch.update(stockRef, {
+            current: firebase.firestore.FieldValue.increment(-qty)
+          });
+
+          const now = new Date();
+          const day = now.getDate().toString().padStart(2, '0');
+          const month = (now.getMonth() + 1).toString().padStart(2, '0');
+          const year = now.getFullYear() + 543;
+          const hours = now.getHours().toString().padStart(2, '0');
+          const mins = now.getMinutes().toString().padStart(2, '0');
+          const timeStr = `${day}/${month}/${year} ${hours}:${mins} น.`;
+
+          const logRef = db.collection('logs').doc();
+          batch.set(logRef, {
+            datetime: timeStr,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            type: 'ย้ายไปหน้าร้าน',
+            title: `ย้าย ${stockItem.name} (${qty} ${stockItem.unit}) ออกไปหน้าร้าน`,
+            details: [`${stockItem.name}: -${qty} ${stockItem.unit}`],
+            note: note || 'ย้ายไปตั้งขายหน้าร้าน'
+          });
+
+          await batch.commit();
+          setTransferModalOpen(false);
+          alert(`ย้าย ${stockItem.name} ออกไปหน้าร้านเรียบร้อยแล้ว!`);
+        } catch (err) {
+          console.error("Transfer error:", err);
+          alert("เกิดข้อผิดพลาดในการย้ายวัตถุดิบ");
+        }
+      };
+
+      // --- BOM Handlers ---
       const handleDeleteRecipe = async (id) => {
         if (confirm('คุณต้องการลบสูตรเครื่องดื่มนี้ใช่หรือไม่?')) {
           await db.collection('recipes').doc(id).delete();
@@ -757,12 +1041,19 @@
                   </div>
                 </div>
 
-                {lowStockItems.length > 0 && (
-                  <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
-                    <i data-lucide="bell" className="w-3.5 h-3.5"></i>
-                    <span>ใกล้หมด ({lowStockItems.length})</span>
+                <div className="flex items-center space-x-2">
+                  <button onClick={() => setPrintModalOpen(true)} className="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md transition">
+                    <i data-lucide="printer" className="w-4 h-4"></i>
+                    <span className="hidden sm:inline">สรุปรายงานประจำวัน</span>
                   </button>
-                )}
+
+                  {lowStockItems.length > 0 && (
+                    <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 animate-pulse">
+                      <i data-lucide="bell" className="w-3.5 h-3.5"></i>
+                      <span>เตือน ({lowStockItems.length})</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="bg-slate-100/80 p-1.5 border-t border-slate-200/60">
@@ -812,7 +1103,6 @@
                           <p className="text-xs text-slate-400 mt-1">กดเพิ่ม/ลดจำนวนหม้อต้มที่การ์ดเมนู เพื่อสรุปรายการต้มอัตโนมัติ</p>
                         </div>
 
-                        {/* ช่องค้นหาเมนูสำหรับบันทึกการผลิต (แก้ไอคอนแว่นขยายแล้ว) */}
                         <div className="mb-4 relative">
                           <input
                             type="text"
@@ -951,21 +1241,24 @@
                           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📦</span> คลังวัตถุดิบคงเหลือ (Real-time Stock)
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">จัดการข้อมูลสต๊อก เติมสต๊อก หรือแก้ไขวัตถุดิบ</p>
+                          <p className="text-xs text-slate-400 mt-1">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
                         </div>
                         
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
-                            <i data-lucide="plus-circle" className="w-5 h-5"></i> 📥 เติมสต๊อกวัตถุดิบ
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                          <button onClick={() => setTransferModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5">
+                            <i data-lucide="share" className="w-4 h-4"></i> 📤 ย้ายไปหน้าร้าน
+                          </button>
+
+                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-1.5">
+                            <i data-lucide="plus-circle" className="w-4 h-4"></i> 📥 เติมสต๊อก
                           </button>
                           
-                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2">
-                            <i data-lucide="plus" className="w-5 h-5"></i> เพิ่มวัตถุดิบใหม่
+                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-1.5">
+                            <i data-lucide="plus" className="w-4 h-4"></i> เพิ่มวัตถุดิบใหม่
                           </button>
                         </div>
                       </div>
 
-                      {/* ช่องค้นหาคลังวัตถุดิบ (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
@@ -1048,7 +1341,6 @@
                         </button>
                       </div>
 
-                      {/* ช่องค้นหาสูตร (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
@@ -1117,7 +1409,7 @@
                           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📜</span> ประวัติการทำรายการย้อนหลัง
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มชา และการเติมวัตถุดิบเข้าคลังทั้งหมด</p>
+                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มชา การเติมวัตถุดิบ และการย้ายออกหน้าร้านทั้งหมด</p>
                         </div>
                         {logs.length > 0 && (
                           <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
@@ -1126,7 +1418,6 @@
                         )}
                       </div>
 
-                      {/* ช่องค้นหาประวัติ (แก้ไอคอนแว่นขยายแล้ว) */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
@@ -1147,11 +1438,17 @@
                         <div className="space-y-4">
                           {filteredLogs.map(log => {
                             const isProduction = log.type === 'ต้มผลิต';
+                            const isTransfer = log.type === 'ย้ายไปหน้าร้าน';
+
+                            let badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                            if (isProduction) badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
+                            if (isTransfer) badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
+
                             return (
                               <div key={log.id} className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white hover:border-slate-300 transition shadow-sm">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
                                   <div className="flex items-center space-x-2.5">
-                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${isProduction ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${badgeStyle}`}>
                                       {log.type || 'บันทึก'}
                                     </span>
                                     <h3 className="font-bold text-sm text-slate-800">{log.title}</h3>
@@ -1193,7 +1490,7 @@
             Beverage Stock Pro &copy; ระบบสต๊อกชา & เติมวัตถุดิบ
           </footer>
 
-          {/* Render All Modals */}
+          {/* Render Modals */}
           <StockModal
             isOpen={stockModalOpen}
             onClose={() => setStockModalOpen(false)}
@@ -1206,6 +1503,20 @@
             onClose={() => setRestockModalOpen(false)}
             stocks={stocks}
             onConfirmBatchRestock={handleBatchRestock}
+          />
+
+          <TransferModal
+            isOpen={transferModalOpen}
+            onClose={() => setTransferModalOpen(false)}
+            stocks={stocks}
+            onConfirmTransfer={handleTransferToStorefront}
+          />
+
+          <PrintSummaryModal
+            isOpen={printModalOpen}
+            onClose={() => setPrintModalOpen(false)}
+            logs={logs}
+            lowStockItems={lowStockItems}
           />
 
           <RecipeModal
