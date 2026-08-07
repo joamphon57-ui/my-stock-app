@@ -344,7 +344,7 @@
           const initialMap = {};
           stocks.forEach(s => { initialMap[s.id] = ''; });
           setRestockQtyMap(initialMap);
-          setNote('เติมวัตถุดิบประจำวัน');
+          setNote('');
           setSelectedCategory('all');
         }
       }, [isOpen, stocks]);
@@ -448,7 +448,7 @@
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุการเติมวัตถุดิบ</label>
                   <input
                     type="text"
-                    placeholder="เช่น สั่งซื้อเพิ่มจากซัพพลายเออร์"
+                    placeholder="เช่น เติมวัตถุดิบประจำวัน / สั่งซื้อเพิ่มจากซัพพลายเออร์..."
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
@@ -467,7 +467,7 @@
     }
 
     // ==========================================
-    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Batch Modal - ปรับปรุงเหมือนช่องเติมสต๊อก)
+    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Batch Modal)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, categories, onConfirmBatchTransfer }) {
       const [transferQtyMap, setTransferQtyMap] = useState({});
@@ -479,7 +479,7 @@
           const initialMap = {};
           stocks.forEach(s => { initialMap[s.id] = ''; });
           setTransferQtyMap(initialMap);
-          setNote('เอาของออกไปหน้าร้าน');
+          setNote('');
           setSelectedCategory('all');
         }
       }, [isOpen, stocks]);
@@ -495,7 +495,6 @@
       const handleSubmit = (e) => {
         e.preventDefault();
 
-        // ตรวจสอบความถูกต้องว่ามีวัตถุดิบที่ถูกเอาออกเกินสต๊อกคงเหลือหรือไม่
         for (const stockId in transferQtyMap) {
           const qty = Number(transferQtyMap[stockId]);
           if (qty > 0) {
@@ -595,7 +594,7 @@
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุการเอาวัตถุดิบออก / ชื่อผู้เบิก</label>
                   <input
                     type="text"
-                    placeholder="เช่น เบิกออกไปหน้าร้าน / สมชาย"
+                    placeholder="เช่น เอาของออกไปหน้าร้าน / เบิกโดย สมชาย..."
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
@@ -619,6 +618,8 @@
     function DeleteLogModal({ isOpen, onClose, logToDelete, onConfirmDelete }) {
       if (!isOpen || !logToDelete) return null;
 
+      const isRestock = logToDelete.type === 'เติมสต๊อก';
+
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 text-center">
@@ -629,8 +630,11 @@
             <p className="text-xs text-slate-500 mb-4 font-medium">"{logToDelete.title}"</p>
 
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left mb-5">
-              <p className="text-xs text-amber-800 font-semibold mb-1">คุณต้องการคืนค่าสต๊อกวัตถุดิบเดิมหรือไม่?</p>
-              <p className="text-[11px] text-amber-700/80">• <b>คืนค่าสต๊อก:</b> ระบบจะดึงวัตถุดิบที่ถูกตัดไปคืนกลับเข้าคลังสต๊อกให้อัตโนมัติ<br/>• <b>ไม่คืนค่าสต๊อก:</b> ลบเฉพาะประวัติข้อความออกเพียงอย่างเดียว</p>
+              <p className="text-xs text-amber-800 font-semibold mb-1">คุณต้องการปรับคืนค่าสต๊อกวัตถุดิบเดิมหรือไม่?</p>
+              <p className="text-[11px] text-amber-700/80">
+                • <b>คืนค่าสต๊อก:</b> {isRestock ? 'หักวัตถุดิบที่เคยเติมใส่ออกไปจากคลัง' : 'ดึงวัตถุดิบที่ถูกตัดไปคืนกลับเข้าคลังสต๊อก'}<br/>
+                • <b>ไม่คืนค่าสต๊อก:</b> ลบเฉพาะประวัติข้อความออกเพียงอย่างเดียว
+              </p>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -986,7 +990,7 @@
     // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('production');
-      const [isBomUnlocked, setIsBomUnlocked] = useState(false); // ปล็อคหน้า BOM
+      const [isBomUnlocked, setIsBomUnlocked] = useState(false);
 
       const [stocks, setStocks] = useState([]);
       const [recipes, setRecipes] = useState([]);
@@ -1000,6 +1004,7 @@
       const [selectedCategory, setSelectedCategory] = useState('all');
       const [searchRecipe, setSearchRecipe] = useState('');
       const [searchHistory, setSearchHistory] = useState('');
+      const [searchMovement, setSearchMovement] = useState('');
 
       const [batchQuantities, setBatchQuantities] = useState({});
       const [productionNote, setProductionNote] = useState('');
@@ -1071,7 +1076,6 @@
         };
       }, []);
 
-      // Switch Tab Handler with Password check for BOM
       const handleTabChange = (tabName) => {
         if (tabName === 'bom' && !isBomUnlocked) {
           const pass = prompt('🔐 กรุณากรอกรหัสผ่านเพื่อเข้าถึง "สูตรการผลิต (BOM)":');
@@ -1086,7 +1090,6 @@
         }
       };
 
-      // Toggle Show Hidden Details in History
       const handleToggleShowDetails = (logId) => {
         if (unlockedLogDetails[logId]) {
           setUnlockedLogDetails(prev => ({ ...prev, [logId]: false }));
@@ -1100,7 +1103,6 @@
         }
       };
 
-      // Category Actions
       const handleAddCategory = async (catName) => {
         if (categories.some(c => c.name.toLowerCase() === catName.toLowerCase())) {
           return alert('หมวดหมู่นี้มีอยู่แล้ว');
@@ -1131,14 +1133,27 @@
         return recipes.filter(r => r.name.toLowerCase().includes(searchRecipe.toLowerCase()));
       }, [recipes, searchRecipe]);
 
+      // ดึงเฉพาะประวัติที่เป็น "ปรุงผลิต" หรือ "ต้มผลิต" สำหรับแท็บบันทึกการผลิต
       const filteredLogs = useMemo(() => {
-        return logs.filter(l => 
+        const prodLogs = logs.filter(l => l.type === 'ปรุงผลิต' || l.type === 'ต้มผลิต');
+        return prodLogs.filter(l => 
           (l.title && l.title.toLowerCase().includes(searchHistory.toLowerCase())) ||
           (l.type && l.type.toLowerCase().includes(searchHistory.toLowerCase())) ||
           (l.note && l.note.toLowerCase().includes(searchHistory.toLowerCase())) ||
           (Array.isArray(l.details) && l.details.some(d => d.toLowerCase().includes(searchHistory.toLowerCase())))
         );
       }, [logs, searchHistory]);
+
+      // ดึงรายการเฉพาะ วัตถุดิบเข้า-ออก (เติมสต๊อก / เอาของออก)
+      const filteredMovements = useMemo(() => {
+        const movementLogs = logs.filter(l => l.type === 'เติมสต๊อก' || l.type === 'เอาของออกไปหน้าร้าน' || l.type === 'ย้ายไปหน้าร้าน');
+        return movementLogs.filter(l =>
+          (l.title && l.title.toLowerCase().includes(searchMovement.toLowerCase())) ||
+          (l.datetime && l.datetime.toLowerCase().includes(searchMovement.toLowerCase())) ||
+          (l.note && l.note.toLowerCase().includes(searchMovement.toLowerCase())) ||
+          (Array.isArray(l.details) && l.details.some(d => d.toLowerCase().includes(searchMovement.toLowerCase())))
+        );
+      }, [logs, searchMovement]);
 
       const lowStockItems = useMemo(() => {
         return stocks.filter(item => {
@@ -1234,7 +1249,7 @@
             type: 'ปรุงผลิต',
             title: `ปรุง ${titleText}`,
             details: detailsList,
-            rawDeductions: deductionsSummary, // เก็บข้อมูลดิบสำหรับการ Restock ตอนกดลบประวัติ
+            rawDeductions: deductionsSummary,
             note: productionNote || 'ปรุงผลิตประจำวัน'
           });
 
@@ -1248,15 +1263,15 @@
         }
       };
 
-      // --- History Handlers ---
+      // --- History & Movement Handlers ---
       const handleClearLogs = async () => {
-        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ล้างประวัติย้อนหลังทั้งหมด"?')) {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการ "ล้างประวัติบันทึกการผลิตทั้งหมด"?')) {
           try {
-            const snapshot = await db.collection('logs').get();
+            const snapshot = await db.collection('logs').where('type', 'in', ['ปรุงผลิต', 'ต้มผลิต']).get();
             const batch = db.batch();
             snapshot.docs.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
-            alert('ล้างประวัติเรียบร้อยแล้ว');
+            alert('ล้างประวัติการผลิตเรียบร้อยแล้ว');
           } catch(e) {
             alert("เกิดข้อผิดพลาดในการล้างประวัติ");
           }
@@ -1269,19 +1284,30 @@
         try {
           const batch = db.batch();
 
-          // หากผู้ใช้เลือกต้องการคืนค่าสต๊อก
           if (shouldRestore) {
-            if (logToDelete.rawDeductions) {
-              Object.entries(logToDelete.rawDeductions).forEach(([sId, amount]) => {
-                const stockRef = db.collection('stocks').doc(sId);
-                batch.update(stockRef, {
-                  current: firebase.firestore.FieldValue.increment(Number(amount))
+            // หากเป็นรายการ "เติมสต๊อก" คืนค่าด้วยการหักออก
+            if (logToDelete.type === 'เติมสต๊อก') {
+              if (logToDelete.rawRestock) {
+                Object.entries(logToDelete.rawRestock).forEach(([sId, amount]) => {
+                  const stockRef = db.collection('stocks').doc(sId);
+                  batch.update(stockRef, {
+                    current: firebase.firestore.FieldValue.increment(-Number(amount))
+                  });
                 });
-              });
+              }
+            } else {
+              // หากเป็นการปรุงผลิตหรือเอาออก คืนค่าด้วยการบวกกลับ
+              if (logToDelete.rawDeductions) {
+                Object.entries(logToDelete.rawDeductions).forEach(([sId, amount]) => {
+                  const stockRef = db.collection('stocks').doc(sId);
+                  batch.update(stockRef, {
+                    current: firebase.firestore.FieldValue.increment(Number(amount))
+                  });
+                });
+              }
             }
           }
 
-          // ลบ Log
           const logRef = db.collection('logs').doc(logToDelete.id);
           batch.delete(logRef);
 
@@ -1327,6 +1353,7 @@
 
           const batch = db.batch();
           const detailsList = [];
+          const rawRestock = {};
 
           itemsToProcess.forEach(([stockId, qty]) => {
             const stockItem = stocks.find(s => s.id === stockId);
@@ -1337,6 +1364,7 @@
                 current: firebase.firestore.FieldValue.increment(amount)
               });
               detailsList.push(`${stockItem.name}: +${amount} ${stockItem.unit}`);
+              rawRestock[stockId] = amount;
             }
           });
 
@@ -1355,6 +1383,7 @@
             type: 'เติมสต๊อก',
             title: `เติมวัตถุดิบเข้าคลัง (${itemsToProcess.length} รายการ)`,
             details: detailsList,
+            rawRestock: rawRestock,
             note: globalNote || 'เติมวัตถุดิบประจำวัน'
           });
 
@@ -1367,7 +1396,7 @@
         }
       };
 
-      // --- Transfer Batch Handler (ปรับปรุงระบบเอาของออกเป็น Batch) ---
+      // --- Transfer Batch Handler ---
       const handleBatchTransfer = async (transferItemsMap, globalNote) => {
         try {
           const itemsToProcess = Object.entries(transferItemsMap).filter(([_, qty]) => Number(qty) > 0);
@@ -1405,7 +1434,7 @@
             type: 'เอาของออกไปหน้าร้าน',
             title: `เอาของออกไปหน้าร้าน (${itemsToProcess.length} รายการ)`,
             details: detailsList,
-            rawDeductions: rawDeductions, // บันทึกไว้เผื่อคืนค่าสต๊อก
+            rawDeductions: rawDeductions,
             note: globalNote || 'เอาของออกไปหน้าร้าน'
           });
 
@@ -1478,7 +1507,7 @@
                 <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto no-scrollbar justify-start sm:justify-center px-2">
                   <button onClick={() => handleTabChange('production')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="flame" className="w-4 h-4"></i>
-                    <span>บันทึกการผลิต</span>
+                    <span>สั่งปรุงน้ำปรุง</span>
                   </button>
 
                   <button onClick={() => handleTabChange('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
@@ -1495,7 +1524,12 @@
 
                   <button onClick={() => handleTabChange('history')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="history" className="w-4 h-4"></i>
-                    <span>ประวัติย้อนหลัง</span>
+                    <span>บันทึกการผลิต</span>
+                  </button>
+
+                  <button onClick={() => handleTabChange('movements')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'movements' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                    <i data-lucide="arrow-left-right" className="w-4 h-4"></i>
+                    <span>บันทึกวัตถุดิบ เข้า - ออก</span>
                   </button>
                 </div>
               </div>
@@ -1508,7 +1542,7 @@
                 <div className="text-center py-20 text-slate-400 font-medium text-sm">กำลังโหลดข้อมูลระบบ...</div>
               ) : (
                 <>
-                  {/* TAB 1: บันทึกการผลิต */}
+                  {/* TAB 1: สั่งปรุงน้ำปรุง */}
                   {activeTab === 'production' && (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                       <div className="lg:col-span-7 bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
@@ -1576,7 +1610,7 @@
 
                         <div className="mt-4">
                           <label className="block text-xs font-semibold text-slate-600 mb-1.5">หมายเหตุ / ผู้ปรุง</label>
-                          <input type="text" placeholder="เช่น ปรุงรอบเช้า" value={productionNote} onChange={(e) => setProductionNote(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
+                          <input type="text" placeholder="เช่น ปรุงรอบเช้า / สมชาย..." value={productionNote} onChange={(e) => setProductionNote(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
                         </div>
                       </div>
 
@@ -1856,19 +1890,19 @@
                     </div>
                   )}
 
-                  {/* TAB 4: ประวัติย้อนหลัง */}
+                  {/* TAB 4: บันทึกการผลิต (แสดงเฉพาะประวัติปรุงผลิต/ต้มผลิต) */}
                   {activeTab === 'history' && (
                     <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
                         <div>
                           <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <span>📜</span> ประวัติการทำรายการย้อนหลัง
+                            <span>📜</span> บันทึกการผลิต
                           </h2>
-                          <p className="text-xs text-slate-400 mt-0.5">ประวัติการปรุง การเติมวัตถุดิบ และการเอาของออกไปหน้าร้านทั้งหมด</p>
+                          <p className="text-xs text-slate-400 mt-0.5">ประวัติการปรุงและการผลิตน้ำปรุงย้อนหลังทั้งหมด</p>
                         </div>
-                        {logs.length > 0 && (
+                        {filteredLogs.length > 0 && (
                           <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-3.5 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
-                            <i data-lucide="trash" className="w-4 h-4"></i> ล้างประวัติทั้งหมด
+                            <i data-lucide="trash" className="w-4 h-4"></i> ล้างบันทึกการผลิตทั้งหมด
                           </button>
                         )}
                       </div>
@@ -1876,7 +1910,7 @@
                       <div className="mb-5 relative">
                         <input
                           type="text"
-                          placeholder="ค้นหาตามวันที่, ประเภท, ชื่อรายการ..."
+                          placeholder="ค้นหาตามวันที่, ชื่อรายการปรุง..."
                           value={searchHistory}
                           onChange={(e) => setSearchHistory(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1888,17 +1922,11 @@
                       </div>
 
                       {filteredLogs.length === 0 ? (
-                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติการทำรายการ</div>
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติการผลิต</div>
                       ) : (
                         <div className="space-y-3 sm:space-y-4">
                           {filteredLogs.map(log => {
-                            const isProduction = log.type === 'ปรุงผลิต' || log.type === 'ต้มผลิต';
-                            const isTransfer = log.type === 'เอาของออกไปหน้าร้าน' || log.type === 'ย้ายไปหน้าร้าน';
-
-                            let badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                            if (isProduction) badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
-                            if (isTransfer) badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
-
+                            const badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
                             const isUnlocked = unlockedLogDetails[log.id];
 
                             return (
@@ -1906,7 +1934,7 @@
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2.5 border-b border-slate-100">
                                   <div className="flex items-center space-x-2">
                                     <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-lg border ${badgeStyle}`}>
-                                      {log.type || 'บันทึก'}
+                                      {log.type || 'ปรุงผลิต'}
                                     </span>
                                     <h3 className="font-bold text-xs sm:text-sm text-slate-800">{log.title}</h3>
                                   </div>
@@ -1960,6 +1988,97 @@
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+
+                  {/* TAB 5: บันทึกวัตถุดิบ เข้า - ออก */}
+                  {activeTab === 'movements' && (
+                    <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
+                        <div>
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>🔄</span> บันทึกวัตถุดิบ เข้า - ออก
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-0.5">สรุปประวัติรายการที่มีการเติมวัตถุดิบเข้าคลัง และเอาของออกไปหน้าร้าน</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-5 relative">
+                        <input
+                          type="text"
+                          placeholder="ค้นหาประวัติวัตถุดิบเข้า-ออก..."
+                          value={searchMovement}
+                          onChange={(e) => setSearchMovement(e.target.value)}
+                          className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
+                        />
+                        <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
+                        {searchMovement && (
+                          <button onClick={() => setSearchMovement('')} className="absolute right-3.5 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                        )}
+                      </div>
+
+                      {filteredMovements.length === 0 ? (
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติรายการวัตถุดิบเข้า-ออก</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                            <thead>
+                              <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600">
+                                <th className="p-3 font-bold rounded-l-xl">วัน-เวลา</th>
+                                <th className="p-3 font-bold">ประเภท</th>
+                                <th className="p-3 font-bold">รายการ</th>
+                                <th className="p-3 font-bold">รายละเอียด (เข้า / ออก)</th>
+                                <th className="p-3 font-bold">หมายเหตุ</th>
+                                <th className="p-3 font-bold text-center rounded-r-xl">จัดการ</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {filteredMovements.map(log => {
+                                const isRestock = log.type === 'เติมสต๊อก';
+                                return (
+                                  <tr key={log.id} className="hover:bg-slate-50/80 transition">
+                                    <td className="p-3 text-slate-500 whitespace-nowrap font-medium text-xs">{log.datetime}</td>
+                                    <td className="p-3 whitespace-nowrap">
+                                      {isRestock ? (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                          + เติมสต๊อก (เข้า)
+                                        </span>
+                                      ) : (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                          - เอาออก (หน้าร้าน)
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 font-bold text-slate-800 whitespace-nowrap">{log.title}</td>
+                                    <td className="p-3">
+                                      {log.details && log.details.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1">
+                                          {log.details.map((d, i) => (
+                                            <span key={i} className={`text-[11px] px-2 py-0.5 rounded font-medium ${isRestock ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                              {d}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : '-'}
+                                    </td>
+                                    <td className="p-3 text-slate-500 italic text-xs">{log.note || '-'}</td>
+                                    <td className="p-3 text-center whitespace-nowrap">
+                                      <button
+                                        onClick={() => setLogToDelete(log)}
+                                        className="text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition text-xs font-bold inline-flex items-center gap-1"
+                                        title="ลบรายการนี้"
+                                      >
+                                        <i data-lucide="trash-2" className="w-3.5 h-3.5"></i> ลบ
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       )}
 
