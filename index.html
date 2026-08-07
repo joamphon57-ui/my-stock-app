@@ -3,8 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  
-  <!-- เปลี่ยนชื่อที่จะขึ้นตอนแชร์ลิงก์หรือเพิ่มลงหน้าจอโฮมตรงนี้ได้เลยครับ -->
   <title>ระบบสต๊อกชา & เติมวัตถุดิบ</title>
   <meta property="og:title" content="ระบบสต๊อกชา & เติมวัตถุดิบ" />
   <meta property="og:description" content="ระบบจัดการสต๊อก คำนวณการต้มชา และเติมวัตถุดิบประจำวัน" />
@@ -67,8 +65,378 @@
     }
     const db = firebase.firestore();
 
+    // 🟢 ระบบ Offline Persistence เร่งความเร็วข้อมูล (โหลดติดปั๊บแม้เน็ตช้า)
+    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.log('Offline Persistence: มีการเปิดเว็บหลายแท็บพร้อมกัน');
+      } else if (err.code === 'unimplemented') {
+        console.log('Offline Persistence: เบราว์เซอร์ไม่รองรับ');
+      }
+    });
+
     const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=150';
 
+    // ==========================================
+    // 1. MODAL: เพิ่ม/แก้ไข วัตถุดิบ (Stock Modal)
+    // ==========================================
+    function StockModal({ isOpen, onClose, onSave, editingStock }) {
+      const [name, setName] = useState('');
+      const [category, setCategory] = useState('ชา/กาแฟ');
+      const [current, setCurrent] = useState('');
+      const [unit, setUnit] = useState('กรัม');
+      const [minAlert, setMinAlert] = useState('500');
+      const [pricePerUnit, setPricePerUnit] = useState('');
+
+      useEffect(() => {
+        if (editingStock) {
+          setName(editingStock.name || '');
+          setCategory(editingStock.category || 'ชา/กาแฟ');
+          setCurrent(editingStock.current || '');
+          setUnit(editingStock.unit || 'กรัม');
+          setMinAlert(editingStock.minAlert || '500');
+          setPricePerUnit(editingStock.pricePerUnit || '');
+        } else {
+          setName('');
+          setCategory('ชา/กาแฟ');
+          setCurrent('');
+          setUnit('กรัม');
+          setMinAlert('500');
+          setPricePerUnit('');
+        }
+      }, [editingStock, isOpen]);
+
+      if (!isOpen) return null;
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name || current === '') return alert('กรุณากรอกชื่อวัตถุดิบและจำนวนคงเหลือ');
+        onSave({
+          id: editingStock ? editingStock.id : undefined,
+          name,
+          category,
+          current: Number(current),
+          unit,
+          minAlert: Number(minAlert),
+          pricePerUnit: pricePerUnit ? Number(pricePerUnit) : 0
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i data-lucide={editingStock ? "edit-3" : "plus-circle"} className="w-5 h-5 text-emerald-600"></i>
+                {editingStock ? 'แก้ไขรายการวัตถุดิบ' : 'เพิ่มวัตถุดิบใหม่เข้าระบบ'}
+              </h3>
+              <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                <i data-lucide="x" className="w-5 h-5"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อวัตถุดิบ <span className="text-rose-500">*</span></label>
+                <input type="text" placeholder="เช่น ผงชาไทยตรามือ" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่</label>
+                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2.5 text-sm rounded-xl custom-input">
+                    <option value="ชา/กาแฟ">ชา / กาแฟ</option>
+                    <option value="นม/น้ำตาล">นม / น้ำตาล / สารให้ความหวาน</option>
+                    <option value="ท็อปปิ้ง">ท็อปปิ้ง / ไข่มุก</option>
+                    <option value="บรรจุภัณฑ์">บรรจุภัณฑ์ / แก้ว / หลอด</option>
+                    <option value="อื่นๆ">อื่นๆ</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียก <span className="text-rose-500">*</span></label>
+                  <input type="text" placeholder="เช่น กรัม, มล., ซอง" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนปัจจุบัน <span className="text-rose-500">*</span></label>
+                  <input type="number" step="any" placeholder="0" value={current} onChange={e => setCurrent(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">จุดเตือนสั่งเพิ่ม (Min Alert)</label>
+                  <input type="number" step="any" placeholder="500" value={minAlert} onChange={e => setMinAlert(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">ราคาต่อหน่วย (บาท) - ถ้ามี</label>
+                <input type="number" step="any" placeholder="เช่น 0.25" value={pricePerUnit} onChange={e => setPricePerUnit(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition">บันทึกข้อมูล</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 2. MODAL: เติมวัตถุดิบเข้าคลัง (Restock Batch Modal)
+    // ==========================================
+    function RestockModal({ isOpen, onClose, stocks, onConfirmBatchRestock }) {
+      const [restockQtyMap, setRestockQtyMap] = useState({});
+      const [note, setNote] = useState('');
+
+      useEffect(() => {
+        if (isOpen) {
+          const initialMap = {};
+          stocks.forEach(s => { initialMap[s.id] = ''; });
+          setRestockQtyMap(initialMap);
+          setNote('เติมวัตถุดิบประจำวัน');
+        }
+      }, [isOpen, stocks]);
+
+      if (!isOpen) return null;
+
+      const handleQtyChange = (stockId, val) => {
+        setRestockQtyMap(prev => ({ ...prev, [stockId]: val }));
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onConfirmBatchRestock(restockQtyMap, note);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <i data-lucide="plus-circle" className="w-5 h-5 text-emerald-600"></i>
+                    📥 เติมวัตถุดิบเข้าคลัง (Restock Batch)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">ใส่จำนวนที่ต้องการเติมลงในช่องของแต่ละวัตถุดิบ</p>
+                </div>
+                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                  <i data-lucide="x" className="w-5 h-5"></i>
+                </button>
+              </div>
+
+              <form id="restockForm" onSubmit={handleSubmit} className="space-y-4">
+                <div className="max-h-[50vh] overflow-y-auto pr-1 space-y-3">
+                  {stocks.map(stock => {
+                    const isLow = Number(stock.current) <= Number(stock.minAlert || 0);
+                    return (
+                      <div key={stock.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${isLow ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-sm text-slate-800 truncate">{stock.name}</span>
+                            {isLow && <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">ใกล้หมด</span>}
+                          </div>
+                          <span className="text-xs text-slate-400">ปัจจุบัน: <strong className="text-slate-700">{stock.current}</strong> {stock.unit}</span>
+                        </div>
+                        <div className="w-36 flex items-center space-x-1.5">
+                          <span className="text-xs font-bold text-emerald-600">+</span>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="0"
+                            value={restockQtyMap[stock.id] || ''}
+                            onChange={(e) => handleQtyChange(stock.id, e.target.value)}
+                            className="w-full px-3 py-2 text-sm text-center font-bold text-emerald-700 bg-white rounded-xl border border-slate-300 focus:border-emerald-500 focus:outline-none"
+                          />
+                          <span className="text-xs text-slate-400 whitespace-nowrap min-w-[30px]">{stock.unit}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุการเติมวัตถุดิบ</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น สั่งซื้อจากซัพพลายเออร์ A / ซื้อจากแม็คโคร"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
+                  />
+                </div>
+              </form>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex gap-3 mt-4">
+              <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
+              <button type="submit" form="restockForm" className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition">บันทึกการเติมสต๊อก</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3. MODAL: เพิ่ม/แก้ไข สูตรเครื่องดื่ม (BOM Modal)
+    // ==========================================
+    function RecipeModal({ isOpen, onClose, onSave, editingRecipe, stocks, handleImageUpload }) {
+      const [name, setName] = useState('');
+      const [yieldInfo, setYieldInfo] = useState('1 หม้อ (ประมาณ 5 ลิตร)');
+      const [image, setImage] = useState('');
+      const [ingredients, setIngredients] = useState([]);
+
+      useEffect(() => {
+        if (editingRecipe) {
+          setName(editingRecipe.name || '');
+          setYieldInfo(editingRecipe.yieldInfo || '1 หม้อ');
+          setImage(editingRecipe.image || '');
+          setIngredients(editingRecipe.ingredients || []);
+        } else {
+          setName('');
+          setYieldInfo('1 หม้อ (ประมาณ 5 ลิตร)');
+          setImage('');
+          setIngredients([]);
+        }
+      }, [editingRecipe, isOpen]);
+
+      if (!isOpen) return null;
+
+      const handleAddIngredient = () => {
+        if (stocks.length === 0) return alert('กรุณาเพิ่มวัตถุดิบในคลังก่อนสร้างสูตร');
+        setIngredients(prev => [...prev, { stockId: stocks[0].id, amount: '' }]);
+      };
+
+      const handleRemoveIngredient = (index) => {
+        setIngredients(prev => prev.filter((_, i) => i !== index));
+      };
+
+      const handleIngredientChange = (index, field, value) => {
+        setIngredients(prev => {
+          const updated = [...prev];
+          updated[index] = { ...updated[index], [field]: value };
+          return updated;
+        });
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name) return alert('กรุณาระบุชื่อสูตรเครื่องดื่ม');
+        if (ingredients.length === 0) return alert('กรุณาเพิ่มส่วนผสมอย่างน้อย 1 รายการ');
+
+        for (let ing of ingredients) {
+          if (!ing.stockId || !ing.amount || Number(ing.amount) <= 0) {
+            return alert('กรุณากรอกปริมาณส่วนผสมให้ครบถ้วนและถูกต้อง');
+          }
+        }
+
+        onSave({
+          id: editingRecipe ? editingRecipe.id : undefined,
+          name,
+          yieldInfo,
+          image,
+          ingredients: ingredients.map(i => ({ stockId: i.stockId, amount: Number(i.amount) }))
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
+            <div className="overflow-y-auto pr-1">
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                  <i data-lucide={editingRecipe ? "edit-3" : "book-open"} className="w-5 h-5 text-emerald-600"></i>
+                  {editingRecipe ? 'แก้ไขสูตรเครื่องดื่ม' : 'เพิ่มสูตรเครื่องดื่มใหม่ (BOM)'}
+                </h3>
+                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                  <i data-lucide="x" className="w-5 h-5"></i>
+                </button>
+              </div>
+
+              <form id="recipeForm" onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อสูตร / เครื่องดื่ม <span className="text-rose-500">*</span></label>
+                  <input type="text" placeholder="เช่น ชาไทยสูตรต้ม 5 ลิตร" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">ปริมาณที่ได้ต่อ 1 บัตช์ / หม้อ</label>
+                  <input type="text" placeholder="เช่น 1 หม้อ (ประมาณ 5 ลิตร / 25 แก้ว)" value={yieldInfo} onChange={e => setYieldInfo(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">รูปภาพประกอบ</label>
+                  <div className="flex items-center space-x-3">
+                    <img src={image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" />
+                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (base64) => setImage(base64))} className="text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="text-xs font-bold text-slate-700">รายการวัตถุดิบส่วนผสม (ต่อ 1 หม้อ) <span className="text-rose-500">*</span></label>
+                    <button type="button" onClick={handleAddIngredient} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
+                      <i data-lucide="plus" className="w-3.5 h-3.5"></i> เพิ่มวัตถุดิบ
+                    </button>
+                  </div>
+
+                  {ingredients.length === 0 ? (
+                    <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-2xl text-xs text-slate-400">
+                      ยังไม่มีส่วนผสม กดปุ่ม "+ เพิ่มวัตถุดิบ" ด้านบนเพื่อระบุส่วนผสม
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {ingredients.map((ing, idx) => {
+                        const selectedStock = stocks.find(s => s.id === ing.stockId);
+                        return (
+                          <div key={idx} className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                            <select
+                              value={ing.stockId}
+                              onChange={(e) => handleIngredientChange(idx, 'stockId', e.target.value)}
+                              className="flex-1 px-3 py-2 text-xs rounded-lg custom-input"
+                            >
+                              {stocks.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>
+                              ))}
+                            </select>
+
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="จำนวนที่ใช้"
+                              value={ing.amount}
+                              onChange={(e) => handleIngredientChange(idx, 'amount', e.target.value)}
+                              className="w-28 px-3 py-2 text-xs rounded-lg custom-input font-bold text-center"
+                            />
+
+                            <span className="text-xs text-slate-500 min-w-[30px] font-medium">{selectedStock ? selectedStock.unit : ''}</span>
+
+                            <button type="button" onClick={() => handleRemoveIngredient(idx)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
+                              <i data-lucide="trash-2" className="w-4 h-4"></i>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex gap-3 mt-4">
+              <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
+              <button type="submit" form="recipeForm" className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition">บันทึกสูตร</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MAIN APP COMPONENT
+    // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('production');
       const [stocks, setStocks] = useState([]);
@@ -618,57 +986,50 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {filteredStocks.map(item => {
                             const currentVal = Number(item.current) || 0;
-                            const maxVal = Number(item.max) || 1;
                             const minVal = Number(item.minAlert) || 0;
-                            const percentage = Math.min(100, Math.max(0, (currentVal / maxVal) * 100));
                             const isLow = currentVal <= minVal;
 
                             return (
-                              <div key={item.id} className={`border-2 rounded-3xl p-5 bg-white transition-all shadow-sm flex flex-col justify-between ${isLow ? 'border-rose-300 bg-rose-50/10' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <div key={item.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
                                 <div>
-                                  <div className="flex justify-between items-start mb-4">
-                                    <div className="flex items-center space-x-3">
-                                      <img src={item.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-sm" />
-                                      <div>
-                                        <h3 className="font-bold text-sm text-slate-800">{item.name}</h3>
-                                        <div className="flex items-center gap-1.5 mt-1">
-                                          <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-semibold border border-slate-200">{item.category || 'วัตถุดิบ'}</span>
-                                          {isLow && (
-                                            <span className="text-[10px] text-rose-600 bg-rose-100 font-extrabold px-2 py-0.5 rounded-md border border-rose-200">⚠️ ใกล้หมด</span>
-                                          )}
-                                        </div>
-                                      </div>
+                                  <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
+                                      <h3 className="font-bold text-base text-slate-800 mt-2">{item.name}</h3>
                                     </div>
-                                    
                                     <div className="flex space-x-1">
-                                      <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-50"><i data-lucide="pencil" className="w-4 h-4"></i></button>
-                                      <button onClick={() => handleDeleteStock(item.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-50"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                      <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-50">
+                                        <i data-lucide="edit-3" className="w-4 h-4"></i>
+                                      </button>
+                                      <button onClick={() => handleDeleteStock(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-50">
+                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                      </button>
                                     </div>
                                   </div>
 
-                                  <div className="flex items-baseline space-x-1.5 mb-2">
-                                    <span className={`text-3xl font-extrabold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>{currentVal}</span>
-                                    <span className="text-sm font-semibold text-emerald-600">{item.unit || 'หน่วย'}</span>
-                                    <span className="text-xs text-slate-400 ml-auto font-medium">สูงสุด {maxVal}</span>
-                                  </div>
-
-                                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2 border border-slate-200/60">
-                                    <div className={`h-full transition-all duration-300 ${isLow ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${percentage}%` }}></div>
-                                  </div>
-
-                                  <div className="text-[11px] text-slate-500 font-medium mb-4">
-                                    จุดเตือนสั่งซื้อ: <span className={isLow ? 'text-rose-600 font-extrabold' : 'text-slate-700 font-bold'}>{minVal} {item.unit}</span>
+                                  <div className="my-4">
+                                    <div className="flex justify-between items-baseline mb-1">
+                                      <span className="text-xs text-slate-400 font-medium">คงเหลือปัจจุบัน</span>
+                                      <span className={`text-2xl font-extrabold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                        {currentVal} <span className="text-xs font-normal text-slate-500">{item.unit}</span>
+                                      </span>
+                                    </div>
+                                    <div className="text-right text-[11px] text-slate-400">
+                                      จุดเตือนสั่งซื้อ: {minVal} {item.unit}
+                                    </div>
                                   </div>
                                 </div>
 
-                                <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="w-full py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold text-xs rounded-xl transition border border-slate-200">
-                                  ✏️ แก้ไขข้อมูล / ยอดคงเหลือ
-                                </button>
+                                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+                                  <span>ราคาต่อหน่วย: ฿{item.pricePerUnit || 0}</span>
+                                  {isLow && <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded">ใกล้หมด</span>}
+                                </div>
                               </div>
                             );
                           })}
                         </div>
                       )}
+
                     </div>
                   )}
 
@@ -678,20 +1039,20 @@
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
                         <div>
                           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <span>📖</span> รายการสูตรเครื่องดื่มมาตรฐาน (Bill of Materials)
+                            <span>📖</span> จัดการสูตรการผลิต (Bill of Materials)
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">จัดการสูตร เพิ่ม แก้ไขสัดส่วนส่วนผสม หรือลบสูตรที่ไม่ต้องการ</p>
+                          <p className="text-xs text-slate-400 mt-1">กำหนดสัดส่วนวัตถุดิบที่ใช้ต้มในแต่ละสูตร</p>
                         </div>
-                        <button onClick={() => { setEditingRecipe(null); setRecipeModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
-                          <i data-lucide="plus" className="w-5 h-5"></i> สร้างสูตรใหม่
+                        <button onClick={() => { setEditingRecipe(null); setRecipeModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2">
+                          <i data-lucide="plus" className="w-5 h-5"></i> เพิ่มสูตรใหม่
                         </button>
                       </div>
 
-                      {/* ช่องค้นหาสูตรการผลิต */}
+                      {/* ช่องค้นหาสูตร */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
-                          placeholder="🔍 ค้นหาชื่อสูตรเครื่องดื่ม..."
+                          placeholder="🔍 ค้นหาชื่อสูตร..."
                           value={searchRecipe}
                           onChange={(e) => setSearchRecipe(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -703,48 +1064,48 @@
                       </div>
 
                       {filteredRecipes.length === 0 ? (
-                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบสูตรเครื่องดื่มที่ตรงกับการค้นหา</div>
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบสูตรการผลิตที่ตรงกับการค้นหา</div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {filteredRecipes.map(recipe => (
-                            <div key={recipe.id} className="border border-slate-200/80 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col justify-between">
-                              <div>
-                                <div className="bg-[#0b1329] text-white p-5 flex justify-between items-center">
-                                  <div className="flex items-center space-x-4">
-                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-2xl object-cover border border-slate-700 shadow-md" />
-                                    <div>
-                                      <h3 className="font-bold text-base text-white">{recipe.name}</h3>
-                                      <p className="text-xs text-slate-400 mt-0.5">{recipe.yieldInfo}</p>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex space-x-1">
-                                    <button onClick={() => { setEditingRecipe(recipe); setRecipeModalOpen(true); }} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"><i data-lucide="pencil" className="w-4 h-4"></i></button>
-                                    <button onClick={() => handleDeleteRecipe(recipe.id)} className="p-2 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-slate-800 transition"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                            <div key={recipe.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition">
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                  <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
+                                  <div>
+                                    <h3 className="font-bold text-base text-slate-800">{recipe.name}</h3>
+                                    <span className="text-xs text-slate-400">{recipe.yieldInfo || '1 หม้อ/ถัง'}</span>
                                   </div>
                                 </div>
-
-                                <div className="p-5 space-y-2 bg-slate-50/50">
-                                  <div className="text-xs font-bold text-slate-400 mb-2">ส่วนผสมต่อ 1 หม้อต้ม</div>
-                                  {recipe.ingredients && recipe.ingredients.map((ing, idx) => {
-                                    const stockItem = stocks.find(s => s.id === ing.stockId);
-                                    return (
-                                      <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-100 text-xs">
-                                        <span className="font-semibold text-slate-700">{stockItem ? stockItem.name : '⚠️ วัตถุดิบถูกลบ'}</span>
-                                        <span className="font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">{ing.amount} {stockItem ? stockItem.unit : ''}</span>
-                                      </div>
-                                    );
-                                  })}
+                                <div className="flex space-x-1">
+                                  <button onClick={() => { setEditingRecipe(recipe); setRecipeModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-50">
+                                    <i data-lucide="edit-3" className="w-4 h-4"></i>
+                                  </button>
+                                  <button onClick={() => handleDeleteRecipe(recipe.id)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-50">
+                                    <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                  </button>
                                 </div>
                               </div>
 
-                              <button onClick={() => { setEditingRecipe(recipe); setRecipeModalOpen(true); }} className="w-full py-3 bg-white text-blue-600 font-bold text-xs hover:bg-blue-50 border-t border-slate-100 transition flex items-center justify-center gap-1">
-                                <i data-lucide="pencil" className="w-3.5 h-3.5"></i> แก้ไขส่วนผสมสูตรนี้
-                              </button>
+                              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">ส่วนผสมต่อ 1 หม้อ:</span>
+                                <ul className="space-y-1.5 text-xs text-slate-700">
+                                  {recipe.ingredients && recipe.ingredients.map((ing, idx) => {
+                                    const stockItem = stocks.find(s => s.id === ing.stockId);
+                                    return (
+                                      <li key={idx} className="flex justify-between items-center">
+                                        <span>• {stockItem ? stockItem.name : 'วัตถุดิบระบุไม่ได้'}</span>
+                                        <span className="font-semibold text-slate-900">{ing.amount} {stockItem ? stockItem.unit : ''}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
                             </div>
                           ))}
                         </div>
                       )}
+
                     </div>
                   )}
 
@@ -754,22 +1115,22 @@
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
                         <div>
                           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <span>📜</span> ประวัติการใช้งานสต๊อก (Movement Logs)
+                            <span>📜</span> ประวัติการทำรายการย้อนหลัง
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มตัดสต๊อก และการเติมสต๊อกย้อนหลัง</p>
+                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มชา และการเติมวัตถุดิบเข้าคลังทั้งหมด</p>
                         </div>
                         {logs.length > 0 && (
-                          <button onClick={handleClearLogs} className="bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs px-4 py-2.5 rounded-2xl hover:bg-rose-100 transition flex items-center justify-center gap-1.5">
-                            <i data-lucide="trash-2" className="w-4 h-4"></i> ล้างประวัติทั้งหมด
+                          <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="trash" className="w-4 h-4"></i> ล้างประวัติทั้งหมด
                           </button>
                         )}
                       </div>
 
-                      {/* ช่องค้นหาประวัติย้อนหลัง */}
+                      {/* ช่องค้นหาประวัติ */}
                       <div className="mb-6 relative">
                         <input
                           type="text"
-                          placeholder="🔍 ค้นหาประวัติ เช่น ชื่อวัตถุดิบ / ผู้ต้ม / เติมสต๊อก / ต้มผลิต..."
+                          placeholder="🔍 ค้นหาตามวันที่, ประเภท, ชื่อรายการ หรือหมายเหตุ..."
                           value={searchHistory}
                           onChange={(e) => setSearchHistory(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -781,45 +1142,45 @@
                       </div>
 
                       {filteredLogs.length === 0 ? (
-                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติรายการที่ตรงกับการค้นหา</div>
+                        <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติการทำรายการ</div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs sm:text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50">
-                                <th className="py-3.5 px-4 rounded-l-xl">วัน-เวลา</th>
-                                <th className="py-3.5 px-4">ประเภท</th>
-                                <th className="py-3.5 px-4">รายการ</th>
-                                <th className="py-3.5 px-4">รายละเอียด</th>
-                                <th className="py-3.5 px-4 rounded-r-xl">หมายเหตุ</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {filteredLogs.map(log => (
-                                <tr key={log.id} className="hover:bg-slate-50/80 transition">
-                                  <td className="py-4 px-4 text-slate-500 font-medium whitespace-nowrap">{log.datetime || '-'}</td>
-                                  <td className="py-4 px-4 whitespace-nowrap">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${log.type === 'เติมสต๊อก' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                      {log.type || 'ทั่วไป'}
+                        <div className="space-y-4">
+                          {filteredLogs.map(log => {
+                            const isProduction = log.type === 'ต้มผลิต';
+                            return (
+                              <div key={log.id} className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white hover:border-slate-300 transition shadow-sm">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
+                                  <div className="flex items-center space-x-2.5">
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${isProduction ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                      {log.type || 'บันทึก'}
                                     </span>
-                                  </td>
-                                  <td className="py-4 px-4 font-bold text-slate-800">{log.title || '-'}</td>
-                                  <td className="py-4 px-4 text-slate-600">
-                                    {Array.isArray(log.details) ? (
-                                      <ul className="list-disc list-inside space-y-0.5">
-                                        {log.details.map((d, i) => <li key={i}>{d}</li>)}
-                                      </ul>
-                                    ) : (
-                                      <span>{log.details || '-'}</span>
-                                    )}
-                                  </td>
-                                  <td className="py-4 px-4 text-slate-400 italic">{log.note || '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                                    <h3 className="font-bold text-sm text-slate-800">{log.title}</h3>
+                                  </div>
+                                  <span className="text-xs text-slate-400 font-medium">{log.datetime}</span>
+                                </div>
+
+                                {log.details && log.details.length > 0 && (
+                                  <div className="mb-3 bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+                                    {log.details.map((dt, i) => (
+                                      <div key={i} className="flex items-center space-x-1.5">
+                                        <span className="text-slate-400">•</span>
+                                        <span>{dt}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {log.note && (
+                                  <div className="text-xs text-slate-400 italic">
+                                    💬 หมายเหตุ: {log.note}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
+
                     </div>
                   )}
                 </>
@@ -828,349 +1189,38 @@
             </main>
           </div>
 
-          <footer className="text-center py-6 text-xs text-slate-400 font-medium">
-            Beverage Stock Pro &copy; 2026 - ระบบจัดการสต๊อกชาแบบเรียลไทม์
+          <footer className="text-center py-6 text-xs text-slate-400 border-t border-slate-200/60 bg-white">
+            Beverage Stock Pro &copy; ระบบสต๊อกชา & เติมวัตถุดิบ
           </footer>
 
-          {/* ================= MODAL: เพิ่ม/แก้ไข วัตถุดิบ ================= */}
-          {stockModalOpen && (
-            <StockFormModal
-              stock={editingStock}
-              onClose={() => setStockModalOpen(false)}
-              onSave={handleSaveStock}
-              handleImageUpload={handleImageUpload}
-            />
-          )}
+          {/* Render All Modals */}
+          <StockModal
+            isOpen={stockModalOpen}
+            onClose={() => setStockModalOpen(false)}
+            onSave={handleSaveStock}
+            editingStock={editingStock}
+          />
 
-          {/* ================= MODAL: เติมสต๊อกแบบรวมทุกรายการ (Batch Restock) ================= */}
-          {restockModalOpen && (
-            <BatchRestockModal
-              stocks={stocks}
-              onClose={() => setRestockModalOpen(false)}
-              onConfirm={handleBatchRestock}
-            />
-          )}
+          <RestockModal
+            isOpen={restockModalOpen}
+            onClose={() => setRestockModalOpen(false)}
+            stocks={stocks}
+            onConfirmBatchRestock={handleBatchRestock}
+          />
 
-          {/* ================= MODAL: เพิ่ม/แก้ไข สูตร BOM ================= */}
-          {recipeModalOpen && (
-            <RecipeFormModal
-              recipe={editingRecipe}
-              stocks={stocks}
-              onClose={() => setRecipeModalOpen(false)}
-              onSave={handleSaveRecipe}
-              handleImageUpload={handleImageUpload}
-            />
-          )}
-
+          <RecipeModal
+            isOpen={recipeModalOpen}
+            onClose={() => setRecipeModalOpen(false)}
+            onSave={handleSaveRecipe}
+            editingRecipe={editingRecipe}
+            stocks={stocks}
+            handleImageUpload={handleImageUpload}
+          />
         </div>
       );
     }
 
-    // Modal เติมสต๊อกแบบรวมทุกวัตถุดิบ (Batch Restock) พร้อมช่องค้นหา
-    function BatchRestockModal({ stocks, onClose, onConfirm }) {
-      const [amounts, setAmounts] = useState({});
-      const [note, setNote] = useState('');
-      const [searchRestock, setSearchRestock] = useState('');
-
-      const filteredRestockStocks = useMemo(() => {
-        return stocks.filter(s => 
-          s.name.toLowerCase().includes(searchRestock.toLowerCase()) || 
-          (s.category && s.category.toLowerCase().includes(searchRestock.toLowerCase()))
-        );
-      }, [stocks, searchRestock]);
-
-      const handleAmountChange = (stockId, delta) => {
-        setAmounts(prev => {
-          const current = prev[stockId] || 0;
-          const updated = Math.max(0, current + delta);
-          return { ...prev, [stockId]: updated };
-        });
-      };
-
-      const handleDirectInput = (stockId, val) => {
-        const num = parseFloat(val);
-        setAmounts(prev => ({
-          ...prev,
-          [stockId]: isNaN(num) || num < 0 ? 0 : num
-        }));
-      };
-
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        onConfirm(amounts, note);
-      };
-
-      const totalItemsToRestock = Object.values(amounts).filter(v => v > 0).length;
-
-      return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                    <span>📥</span> เติมสต๊อกวัตถุดิบเข้าคลัง
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">ระบุจำนวนที่ต้องการเติมเพิ่มในช่องด้านขวาของแต่ละรายการ</p>
-                </div>
-                {totalItemsToRestock > 0 && (
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">
-                    เตรียมเติม {totalItemsToRestock} รายการ
-                  </span>
-                )}
-              </div>
-
-              {/* ช่องค้นหาวัตถุดิบใน Modal เติมสต๊อก */}
-              <div className="mb-4 relative">
-                <input
-                  type="text"
-                  placeholder="🔍 ค้นหาวัตถุดิบที่ต้องการเติม..."
-                  value={searchRestock}
-                  onChange={(e) => setSearchRestock(e.target.value)}
-                  className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input pl-10"
-                />
-                <span className="absolute left-3.5 top-3 text-slate-400 text-xs">🔍</span>
-                {searchRestock && (
-                  <button onClick={() => setSearchRestock('')} className="absolute right-3 top-2.5 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
-                )}
-              </div>
-
-              {filteredRestockStocks.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-sm">ไม่พบวัตถุดิบที่ต้องการเติมสต๊อก</div>
-              ) : (
-                <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-1">
-                  {filteredRestockStocks.map(item => {
-                    const addQty = amounts[item.id] || 0;
-                    const isLow = Number(item.current) <= Number(item.minAlert);
-
-                    return (
-                      <div key={item.id} className={`p-3.5 rounded-2xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${addQty > 0 ? 'border-emerald-500 bg-emerald-50/20 shadow-sm' : 'border-slate-200 bg-white'}`}>
-                        <div className="flex items-center space-x-3">
-                          <img src={item.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" />
-                          <div>
-                            <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                              <span>{item.name}</span>
-                              {isLow && <span className="text-[10px] text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md font-extrabold">⚠️ ใกล้หมด</span>}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              คงเหลือปัจจุบัน: <span className="font-bold text-slate-700">{item.current}</span> {item.unit}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                          <span className="text-xs text-slate-400 mr-1 font-medium hidden sm:inline">เติมเพิ่ม:</span>
-                          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-                            <button type="button" onClick={() => handleAmountChange(item.id, -1)} className="w-9 h-9 bg-white text-slate-700 font-extrabold rounded-lg hover:bg-slate-200 active:scale-95 transition flex items-center justify-center shadow-sm">
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              step="1"
-                              min="0"
-                              value={addQty === 0 ? '' : addQty}
-                              placeholder="0"
-                              onChange={(e) => handleDirectInput(item.id, e.target.value)}
-                              className="w-16 text-center font-extrabold text-sm text-emerald-600 bg-transparent focus:outline-none"
-                            />
-                            <button type="button" onClick={() => handleAmountChange(item.id, 1)} className="w-9 h-9 bg-emerald-500 text-white font-extrabold rounded-lg hover:bg-emerald-600 active:scale-95 transition flex items-center justify-center shadow-sm">
-                              +
-                            </button>
-                          </div>
-                          <span className="text-xs font-bold text-slate-600 min-w-[35px]">{item.unit}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t border-slate-100">
-              <div className="mb-4">
-                <input type="text" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี) เช่น สั่งซื้อประจำสัปดาห์" value={note} onChange={(e) => setNote(e.target.value)} className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input" />
-              </div>
-
-              <div className="flex space-x-3">
-                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition text-xs sm:text-sm">
-                  ยกเลิก
-                </button>
-                <button type="submit" disabled={totalItemsToRestock === 0} className={`w-1/2 py-3 rounded-2xl font-bold transition text-xs sm:text-sm shadow-lg ${totalItemsToRestock > 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
-                  บันทึกเติมสต๊อก ({totalItemsToRestock} รายการ)
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    // Modal วัตถุดิบ
-    function StockFormModal({ stock, onClose, onSave, handleImageUpload }) {
-      const [image, setImage] = useState(stock?.image || DEFAULT_IMAGE);
-      const [unit, setUnit] = useState(stock?.unit || 'ถุง');
-
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        onSave({
-          id: stock?.id || null,
-          name: formData.get('name'),
-          category: formData.get('category'),
-          current: parseFloat(formData.get('current')) || 0,
-          max: parseFloat(formData.get('max')) || 0,
-          minAlert: parseFloat(formData.get('minAlert')) || 0,
-          unit: unit,
-          image: image
-        });
-      };
-
-      return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl">
-            <h3 className="font-bold text-slate-800 text-lg mb-6 pb-3 border-b border-slate-100 flex items-center gap-2">
-              {stock ? '✏️ แก้ไขข้อมูลวัตถุดิบ' : '➕ เพิ่มวัตถุดิบใหม่'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
-              <div className="flex items-center space-x-4 mb-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <img src={image} className="w-16 h-16 rounded-2xl object-cover border border-slate-300 shadow-sm" />
-                <div className="flex-1">
-                  <label className="block font-semibold text-slate-700 mb-1">รูปวัตถุดิบ</label>
-                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImage)} className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-500 file:text-white font-semibold cursor-pointer" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">ชื่อวัตถุดิบ</label>
-                <input name="name" defaultValue={stock?.name || ''} required placeholder="เช่น ชาตรามือ, นมข้นหวาน" className="w-full px-4 py-2.5 rounded-xl custom-input" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">หมวดหมู่</label>
-                  <input name="category" defaultValue={stock?.category || 'ผงชา/กาแฟ'} required className="w-full px-4 py-2.5 rounded-xl custom-input" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">หน่วยนับวัตถุดิบ</label>
-                  <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full px-3 py-2.5 rounded-xl custom-input font-semibold">
-                    <option value="ถุง">ถุง</option>
-                    <option value="กระป๋อง">กระป๋อง</option>
-                    <option value="ขวด">ขวด</option>
-                    <option value="กล่อง">กล่อง</option>
-                    <option value="กิโลกรัม">กิโลกรัม (kg)</option>
-                    <option value="ลิตร">ลิตร (L)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">ยอดคงเหลือ</label>
-                  <input type="number" step="0.01" name="current" defaultValue={stock?.current ?? 0} required className="w-full px-3 py-2.5 text-center font-bold rounded-xl custom-input" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">สต๊อกสูงสุด</label>
-                  <input type="number" step="0.01" name="max" defaultValue={stock?.max ?? 10} required className="w-full px-3 py-2.5 text-center rounded-xl custom-input" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">จุดเตือนสั่งซื้อ</label>
-                  <input type="number" step="0.01" name="minAlert" defaultValue={stock?.minAlert ?? 2} required className="w-full px-3 py-2.5 text-center rounded-xl custom-input text-rose-600 font-bold" />
-                </div>
-              </div>
-
-              <div className="flex space-x-3 pt-4 border-t border-slate-100">
-                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition">ยกเลิก</button>
-                <button type="submit" className="w-1/2 py-3 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition shadow-lg shadow-emerald-500/20">บันทึกวัตถุดิบ</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    // Modal สูตร BOM
-    function RecipeFormModal({ recipe, stocks, onClose, onSave, handleImageUpload }) {
-      const [name, setName] = useState(recipe?.name || '');
-      const [yieldInfo, setYieldInfo] = useState(recipe?.yieldInfo || '1 หม้อต้ม (ประมาณ 30 แก้ว)');
-      const [image, setImage] = useState(recipe?.image || DEFAULT_IMAGE);
-      const [ingredients, setIngredients] = useState(
-        recipe?.ingredients || [{ stockId: stocks[0]?.id || '', amount: 1 }]
-      );
-
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        if (ingredients.length === 0) return alert('กรุณาเพิ่มส่วนผสมอย่างน้อย 1 รายการ');
-        onSave({ id: recipe?.id || null, name, yieldInfo, image, ingredients });
-      };
-
-      return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="font-bold text-slate-800 text-lg mb-6 pb-3 border-b border-slate-100 flex items-center gap-2">
-              {recipe ? '✏️ แก้ไขสูตรการผลิต' : '➕ สร้างสูตรการผลิตใหม่'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
-              <div className="flex items-center space-x-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <img src={image} className="w-16 h-16 rounded-2xl object-cover border border-slate-300 shadow-sm" />
-                <div className="flex-1">
-                  <label className="block font-semibold text-slate-700 mb-1">เลือกรูปเมนูเครื่องดื่ม</label>
-                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImage)} className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-blue-600 file:text-white font-semibold cursor-pointer" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">ชื่อสูตร / ชื่อเมนู</label>
-                <input value={name} onChange={e => setName(e.target.value)} required placeholder="เช่น ชาไทยสูตรเข้มข้น" className="w-full px-4 py-2.5 rounded-xl custom-input" />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">รายละเอียดปริมาณที่ได้</label>
-                <input value={yieldInfo} onChange={e => setYieldInfo(e.target.value)} required placeholder="เช่น 1 หม้อต้ม (ประมาณ 30 แก้ว)" className="w-full px-4 py-2.5 rounded-xl custom-input" />
-              </div>
-
-              <div className="pt-2">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="font-bold text-slate-800">ส่วนผสมที่ใช้ต่อ 1 หม้อต้ม</label>
-                  <button type="button" onClick={() => setIngredients([...ingredients, { stockId: stocks[0]?.id || '', amount: 1 }])} className="text-blue-600 font-bold hover:underline text-xs">+ เพิ่มส่วนผสม</button>
-                </div>
-                
-                {stocks.length === 0 ? (
-                  <div className="text-xs text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-200">ยังไม่มีวัตถุดิบในคลัง กรุณาเพิ่มวัตถุดิบก่อนสร้างสูตรครับ</div>
-                ) : (
-                  <div className="space-y-2">
-                    {ingredients.map((ing, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
-                        <select value={ing.stockId} onChange={e => {
-                          const updated = [...ingredients];
-                          updated[idx].stockId = e.target.value;
-                          setIngredients(updated);
-                        }} className="flex-1 px-3 py-2 rounded-xl custom-input font-medium">
-                          {stocks.map(s => <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>)}
-                        </select>
-                        <input type="number" step="0.01" value={ing.amount} onChange={e => {
-                          const updated = [...ingredients];
-                          updated[idx].amount = parseFloat(e.target.value) || 0;
-                          setIngredients(updated);
-                        }} required className="w-24 px-3 py-2 rounded-xl custom-input text-right font-bold" />
-                        <button type="button" onClick={() => setIngredients(ingredients.filter((_, i) => i !== idx))} className="text-rose-500 hover:text-rose-700 p-2 font-bold text-base">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex space-x-3 pt-4 border-t border-slate-100">
-                <button type="button" onClick={onClose} className="w-1/2 py-3 border border-slate-300 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition">ยกเลิก</button>
-                <button type="submit" className="w-1/2 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">บันทึกสูตร</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
 </html>
