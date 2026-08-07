@@ -18,8 +18,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Barcode / QR Scanner Library -->
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -44,12 +42,10 @@
       outline: none;
     }
 
-    /* Target mobile touch optimization */
     input, select, button {
       touch-action: manipulation;
     }
 
-    /* Print Styles */
     @media print {
       body * { visibility: hidden; }
       #printable-report, #printable-report * { visibility: visible; }
@@ -62,7 +58,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo } = React;
 
     // --- Firebase Configuration ---
     const firebaseConfig = {
@@ -90,18 +86,15 @@
 
     const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=150';
 
-    // Helper: Convert Units (Grams/Kg, Ml/Liters)
     const convertUnitToStock = (amount, recipeUnit, stockUnit) => {
       const rUnit = (recipeUnit || '').toLowerCase().trim();
       const sUnit = (stockUnit || '').toLowerCase().trim();
 
       if (rUnit === sUnit) return amount;
       
-      // Grams & Kilograms
       if ((rUnit === 'กรัม' || rUnit === 'g') && (sUnit === 'กิโลกรัม' || sUnit === 'kg')) return amount / 1000;
       if ((rUnit === 'กิโลกรัม' || rUnit === 'kg') && (sUnit === 'กรัม' || sUnit === 'g')) return amount * 1000;
 
-      // ML & Liters
       if ((rUnit === 'มล.' || rUnit === 'ml') && (sUnit === 'ลิตร' || sUnit === 'l')) return amount / 1000;
       if ((rUnit === 'ลิตร' || rUnit === 'l') && (sUnit === 'มล.' || sUnit === 'ml')) return amount * 1000;
 
@@ -109,65 +102,11 @@
     };
 
     // ==========================================
-    // CAMERA BARCODE SCANNER MODAL
-    // ==========================================
-    function BarcodeScannerModal({ isOpen, onClose, onScanSuccess }) {
-      const videoRef = useRef(null);
-      const codeReaderRef = useRef(null);
-
-      useEffect(() => {
-        if (isOpen) {
-          const codeReader = new ZXing.BrowserMultiFormatReader();
-          codeReaderRef.current = codeReader;
-
-          codeReader.decodeFromVideoDevice(undefined, videoRef.current, (result, err) => {
-            if (result) {
-              onScanSuccess(result.getText());
-              onClose();
-            }
-          }).catch(err => console.error(err));
-        } else {
-          if (codeReaderRef.current) {
-            codeReaderRef.current.reset();
-          }
-        }
-
-        return () => {
-          if (codeReaderRef.current) {
-            codeReaderRef.current.reset();
-          }
-        };
-      }, [isOpen]);
-
-      if (!isOpen) return null;
-
-      return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl flex flex-col items-center">
-            <div className="w-full flex justify-between items-center mb-3">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <i data-lucide="scan" className="w-4 h-4 text-emerald-600"></i> สแกนบาร์โค้ดวัตถุดิบ
-              </h3>
-              <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
-                <i data-lucide="x" className="w-5 h-5"></i>
-              </button>
-            </div>
-            <div className="w-full h-56 bg-black rounded-2xl overflow-hidden relative border-2 border-emerald-500">
-              <video ref={videoRef} className="w-full h-full object-cover"></video>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-3 text-center">ส่องบาร์โค้ดให้อยู่ในกรอบเพื่อค้นหาวัตถุดิบอัตโนมัติ</p>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
     // 1. MODAL: เพิ่ม/แก้ไข วัตถุดิบ (Stock Modal)
     // ==========================================
     function StockModal({ isOpen, onClose, onSave, editingStock, handleImageUpload }) {
       const [name, setName] = useState('');
       const [category, setCategory] = useState('ชา/กาแฟ');
-      const [barcode, setBarcode] = useState('');
       const [categoriesList, setCategoriesList] = useState([
         'ชา/กาแฟ', 'นม/น้ำตาล', 'ไซรัป/ยา', 'ท็อปปิ้ง', 'บรรจุภัณฑ์', 'อื่นๆ'
       ]);
@@ -175,13 +114,11 @@
       const [unit, setUnit] = useState('กรัม');
       const [minAlert, setMinAlert] = useState('500');
       const [image, setImage] = useState('');
-      const [isScannerOpen, setIsScannerOpen] = useState(false);
 
       useEffect(() => {
         if (editingStock) {
           setName(editingStock.name || '');
           setCategory(editingStock.category || 'ชา/กาแฟ');
-          setBarcode(editingStock.barcode || '');
           setCurrent(editingStock.current !== undefined ? editingStock.current : '');
           setUnit(editingStock.unit || 'กรัม');
           setMinAlert(editingStock.minAlert !== undefined ? editingStock.minAlert : '500');
@@ -193,7 +130,6 @@
         } else {
           setName('');
           setCategory('ชา/กาแฟ');
-          setBarcode('');
           setCurrent('');
           setUnit('กรัม');
           setMinAlert('500');
@@ -221,7 +157,6 @@
           id: editingStock ? editingStock.id : undefined,
           name,
           category,
-          barcode,
           current: Number(current),
           unit,
           minAlert: Number(minAlert),
@@ -246,16 +181,6 @@
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อวัตถุดิบ <span className="text-rose-500">*</span></label>
                 <input type="text" placeholder="เช่น ผงชาไทยตรามือ / ยาชนิด A / ไซรัปส้ม" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">รหัสบาร์โค้ด (Optional)</label>
-                <div className="flex space-x-2">
-                  <input type="text" placeholder="ยิงบาร์โค้ดที่นี่..." value={barcode} onChange={e => setBarcode(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl font-bold border border-emerald-200">
-                    <i data-lucide="scan" className="w-4 h-4"></i>
-                  </button>
-                </div>
               </div>
 
               <div>
@@ -307,12 +232,6 @@
               </div>
             </form>
           </div>
-
-          <BarcodeScannerModal
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={(code) => setBarcode(code)}
-          />
         </div>
       );
     }
@@ -424,13 +343,11 @@
       const [searchQuery, setSearchQuery] = useState('');
       const [qty, setQty] = useState('');
       const [note, setNote] = useState('');
-      const [isScannerOpen, setIsScannerOpen] = useState(false);
 
       const filteredStocksForTransfer = useMemo(() => {
         return stocks.filter(s => 
           s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (s.barcode && s.barcode.includes(searchQuery))
+          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
         );
       }, [stocks, searchQuery]);
 
@@ -456,15 +373,6 @@
         onConfirmTransfer(stockId, Number(qty), note);
       };
 
-      const handleScanBarcode = (scannedCode) => {
-        const found = stocks.find(s => s.barcode === scannedCode);
-        if (found) {
-          setStockId(found.id);
-        } else {
-          alert('ไม่พบวัตถุดิบที่มีบาร์โค้ดนี้');
-        }
-      };
-
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
@@ -480,19 +388,14 @@
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาหรือสแกนบาร์โค้ด</label>
-                <div className="flex space-x-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="พิมพ์ชื่อวัตถุดิบ..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-4 py-2 text-xs rounded-xl custom-input"
-                  />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-amber-50 text-amber-600 px-3 py-2 rounded-xl border border-amber-200 font-bold">
-                    <i data-lucide="scan" className="w-4 h-4"></i>
-                  </button>
-                </div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาวัตถุดิบ</label>
+                <input
+                  type="text"
+                  placeholder="พิมพ์ชื่อวัตถุดิบ..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-2 text-xs rounded-xl custom-input mb-2"
+                />
 
                 <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบ / ยา / ไซรัป <span className="text-rose-500">*</span></label>
                 <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input font-medium">
@@ -538,12 +441,6 @@
               </div>
             </form>
           </div>
-
-          <BarcodeScannerModal
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={handleScanBarcode}
-          />
         </div>
       );
     }
@@ -870,7 +767,7 @@
       // Search & Filter States
       const [searchProduction, setSearchProduction] = useState('');
       const [searchStock, setSearchStock] = useState('');
-      const [selectedCategory, setSelectedCategory] = useState('all'); // เพิ่ม State หมวดหมู่
+      const [selectedCategory, setSelectedCategory] = useState('all');
       const [searchRecipe, setSearchRecipe] = useState('');
       const [searchHistory, setSearchHistory] = useState('');
 
@@ -925,24 +822,20 @@
         };
       }, []);
 
-      // ดึงรายชื่อหมวดหมู่ทั้งหมดที่มีในสต๊อกแบบไดนามิก
       const availableCategories = useMemo(() => {
         const defaultCats = ['ชา/กาแฟ', 'นม/น้ำตาล', 'ไซรัป/ยา', 'ท็อปปิ้ง', 'บรรจุภัณฑ์', 'อื่นๆ'];
         const stockCats = stocks.map(s => s.category).filter(Boolean);
         return Array.from(new Set([...defaultCats, ...stockCats]));
       }, [stocks]);
 
-      // Filtered Lists
       const filteredProductionRecipes = useMemo(() => {
         return recipes.filter(r => r.name.toLowerCase().includes(searchProduction.toLowerCase()));
       }, [recipes, searchProduction]);
 
-      // ระบบ กรองตามคำค้นหา + หมวดหมู่ที่เลือก
       const filteredStocks = useMemo(() => {
         return stocks.filter(s => {
           const matchSearch = s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
-                             (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase())) ||
-                             (s.barcode && s.barcode.includes(searchStock));
+                             (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase()));
           
           const matchCategory = selectedCategory === 'all' || s.category === selectedCategory;
 
@@ -971,7 +864,6 @@
         });
       }, [stocks]);
 
-      // Helper: Image Upload
       const handleImageUpload = (e, callback) => {
         const file = e.target.files[0];
         if (file) {
@@ -1446,27 +1338,28 @@
                           <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
                         </div>
                         
-                        <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
-                          <button onClick={() => setTransferModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-amber-500/20 flex items-center justify-center gap-1">
-                            <i data-lucide="share" className="w-3.5 h-3.5"></i> ย้ายออก
+                        {/* ปุ่มรูปแบบเดียวกับภาพที่ส่งมา */}
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                          <button onClick={() => setTransferModalOpen(true)} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl transition shadow-md shadow-amber-500/20 flex items-center gap-1.5 active:scale-95">
+                            <i data-lucide="upload" className="w-4 h-4"></i> ย้ายไปหน้าร้าน
                           </button>
 
-                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1">
-                            <i data-lucide="plus-circle" className="w-3.5 h-3.5"></i> เติมสต๊อก
+                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5 active:scale-95">
+                            <i data-lucide="plus-circle" className="w-4 h-4"></i> เติมสต๊อก
                           </button>
                           
-                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-slate-800/20 flex items-center justify-center gap-1">
-                            <i data-lucide="plus" className="w-3.5 h-3.5"></i> เพิ่มใหม่
+                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl transition shadow-md shadow-slate-900/20 flex items-center gap-1.5 active:scale-95">
+                            <span className="text-base font-normal leading-none">+</span> เพิ่มวัตถุดิบใหม่
                           </button>
                         </div>
                       </div>
 
-                      {/* --- ส่วนค้นหา & ปุ่มกดเลือกหมวดหมู่ (Category Filter) --- */}
+                      {/* --- ส่วนค้นหา & ปุ่มกดเลือกหมวดหมู่ --- */}
                       <div className="space-y-3 mb-5">
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="ค้นหาวัตถุดิบ หรือสแกนบาร์โค้ด..."
+                            placeholder="ค้นหาวัตถุดิบในคลัง หรือหมวดหมู่..."
                             value={searchStock}
                             onChange={(e) => setSearchStock(e.target.value)}
                             className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1523,7 +1416,6 @@
                                       <div>
                                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
                                         <h3 className="font-bold text-sm sm:text-base text-slate-800 mt-0.5">{item.name}</h3>
-                                        {item.barcode && <p className="text-[10px] text-slate-400">Barcode: {item.barcode}</p>}
                                       </div>
                                     </div>
                                     <div className="flex space-x-1">
