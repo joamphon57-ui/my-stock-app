@@ -86,33 +86,51 @@
     // ==========================================
     // 1. MODAL: เพิ่ม/แก้ไข วัตถุดิบ (Stock Modal)
     // ==========================================
-    function StockModal({ isOpen, onClose, onSave, editingStock }) {
+    function StockModal({ isOpen, onClose, onSave, editingStock, handleImageUpload }) {
       const [name, setName] = useState('');
       const [category, setCategory] = useState('ชา/กาแฟ');
+      const [categoriesList, setCategoriesList] = useState([
+        'ชา/กาแฟ', 'นม/น้ำตาล', 'ไซรัป/ยา', 'ท็อปปิ้ง', 'บรรจุภัณฑ์', 'อื่นๆ'
+      ]);
       const [current, setCurrent] = useState('');
       const [unit, setUnit] = useState('กรัม');
       const [minAlert, setMinAlert] = useState('500');
-      const [pricePerUnit, setPricePerUnit] = useState('');
+      const [image, setImage] = useState('');
 
       useEffect(() => {
         if (editingStock) {
           setName(editingStock.name || '');
           setCategory(editingStock.category || 'ชา/กาแฟ');
-          setCurrent(editingStock.current || '');
+          setCurrent(editingStock.current !== undefined ? editingStock.current : '');
           setUnit(editingStock.unit || 'กรัม');
-          setMinAlert(editingStock.minAlert || '500');
-          setPricePerUnit(editingStock.pricePerUnit || '');
+          setMinAlert(editingStock.minAlert !== undefined ? editingStock.minAlert : '500');
+          setImage(editingStock.image || '');
+
+          if (editingStock.category && !categoriesList.includes(editingStock.category)) {
+            setCategoriesList(prev => [...prev, editingStock.category]);
+          }
         } else {
           setName('');
           setCategory('ชา/กาแฟ');
           setCurrent('');
           setUnit('กรัม');
           setMinAlert('500');
-          setPricePerUnit('');
+          setImage('');
         }
       }, [editingStock, isOpen]);
 
       if (!isOpen) return null;
+
+      const handleAddCustomCategory = () => {
+        const newCat = prompt("กรุณากรอกชื่อหมวดหมู่ใหม่ที่ต้องการเพิ่ม:");
+        if (newCat && newCat.trim() !== '') {
+          const trimmed = newCat.trim();
+          if (!categoriesList.includes(trimmed)) {
+            setCategoriesList(prev => [...prev, trimmed]);
+          }
+          setCategory(trimmed);
+        }
+      };
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -124,13 +142,13 @@
           current: Number(current),
           unit,
           minAlert: Number(minAlert),
-          pricePerUnit: pricePerUnit ? Number(pricePerUnit) : 0
+          image
         });
       };
 
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <i data-lucide={editingStock ? "edit-3" : "plus-circle"} className="w-5 h-5 text-emerald-600"></i>
@@ -147,22 +165,23 @@
                 <input type="text" placeholder="เช่น ผงชาไทยตรามือ / ยาชนิด A / ไซรัปส้ม" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่</label>
-                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2.5 text-sm rounded-xl custom-input">
-                    <option value="ชา/กาแฟ">ชา / กาแฟ</option>
-                    <option value="นม/น้ำตาล">นม / น้ำตาล / สารให้ความหวาน</option>
-                    <option value="ไซรัป/ยา">ไซรัป / ยาปรุง</option>
-                    <option value="ท็อปปิ้ง">ท็อปปิ้ง / ไข่มุก</option>
-                    <option value="บรรจุภัณฑ์">บรรจุภัณฑ์ / แก้ว / หลอด</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-slate-600">หมวดหมู่</label>
+                  <button type="button" onClick={handleAddCustomCategory} className="text-[11px] font-bold text-emerald-600 hover:underline">
+                    + เพิ่มหมวดหมู่ใหม่
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียก <span className="text-rose-500">*</span></label>
-                  <input type="text" placeholder="เช่น กรัม, มล., ขวด" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
-                </div>
+                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2.5 text-sm rounded-xl custom-input">
+                  {categoriesList.map((cat, idx) => (
+                    <option key={idx} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียก <span className="text-rose-500">*</span></label>
+                <input type="text" placeholder="เช่น กรัม, มล., ขวด" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -177,8 +196,16 @@
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">ราคาต่อหน่วย (บาท) - ถ้ามี</label>
-                <input type="number" step="any" placeholder="เช่น 0.25" value={pricePerUnit} onChange={e => setPricePerUnit(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                <label className="block text-xs font-semibold text-slate-600 mb-1">รูปภาพวัตถุดิบ</label>
+                <div className="flex items-center space-x-3">
+                  <img src={image || DEFAULT_IMAGE} className="w-14 h-14 rounded-xl object-cover border border-slate-200" alt="พรีวิววัตถุดิบ" />
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={(e) => handleImageUpload(e, (base64) => setImage(base64))} 
+                    className="text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" 
+                  />
+                </div>
               </div>
 
               <div className="pt-4 flex gap-3">
@@ -241,12 +268,15 @@
                     const isLow = Number(stock.current) <= Number(stock.minAlert || 0);
                     return (
                       <div key={stock.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${isLow ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-sm text-slate-800 truncate">{stock.name}</span>
-                            {isLow && <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">ใกล้หมด</span>}
+                        <div className="flex-1 min-w-0 flex items-center gap-3">
+                          <img src={stock.image || DEFAULT_IMAGE} className="w-10 h-10 rounded-lg object-cover border" alt={stock.name} />
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-sm text-slate-800 truncate">{stock.name}</span>
+                              {isLow && <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">ใกล้หมด</span>}
+                            </div>
+                            <span className="text-xs text-slate-400">ปัจจุบัน: <strong className="text-slate-700">{stock.current}</strong> {stock.unit}</span>
                           </div>
-                          <span className="text-xs text-slate-400">ปัจจุบัน: <strong className="text-slate-700">{stock.current}</strong> {stock.unit}</span>
                         </div>
                         <div className="w-36 flex items-center space-x-1.5">
                           <span className="text-xs font-bold text-emerald-600">+</span>
@@ -288,16 +318,25 @@
     }
 
     // ==========================================
-    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
+    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal พร้อมช่องค้นหา)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
       const [stockId, setStockId] = useState('');
+      const [searchQuery, setSearchQuery] = useState('');
       const [qty, setQty] = useState('');
       const [note, setNote] = useState('');
+
+      const filteredStocksForTransfer = useMemo(() => {
+        return stocks.filter(s => 
+          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+      }, [stocks, searchQuery]);
 
       useEffect(() => {
         if (isOpen && stocks.length > 0) {
           setStockId(stocks[0].id);
+          setSearchQuery('');
           setQty('');
           setNote('แบ่งขาย / ตั้งขายหน้าร้าน');
         }
@@ -331,11 +370,23 @@
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาวัตถุดิบเพื่อย้ายออก</label>
+                <input
+                  type="text"
+                  placeholder="พิมพ์ชื่อวัตถุดิบเพื่อกรอง..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-2 text-xs rounded-xl custom-input mb-2"
+                />
+
                 <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบ / ยา / ไซรัป <span className="text-rose-500">*</span></label>
                 <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input font-medium">
-                  {stocks.map(s => (
+                  {filteredStocksForTransfer.map(s => (
                     <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
                   ))}
+                  {filteredStocksForTransfer.length === 0 && (
+                    <option value="" disabled>ไม่พบวัตถุดิบที่ค้นหา</option>
+                  )}
                 </select>
               </div>
 
@@ -384,7 +435,6 @@
 
       const todayStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 
-      // ดึงเฉพาะรายการต้มของวันนี้
       const todayLogs = logs.filter(l => {
         if (!l.datetime) return false;
         const now = new Date();
@@ -394,13 +444,11 @@
         return l.datetime.includes(`${d}/${m}/${y}`);
       });
 
-      // รวมยอดการต้มน้ำชาประจำวัน
       const productionLogs = todayLogs.filter(l => l.type === 'ต้มผลิต');
       let totalPots = 0;
       const recipeSummary = {};
 
       productionLogs.forEach(l => {
-        // ดึงยอดจาก title เช่น "ต้ม ชาไทย (2 หม้อ), นมสด (1 หม้อ)"
         if (l.title) {
           const items = l.title.replace('ต้ม ', '').split(', ');
           items.forEach(item => {
@@ -415,7 +463,6 @@
         }
       });
 
-      // ดึงรายการย้ายไปหน้าร้านวันนี้
       const transferLogs = todayLogs.filter(l => l.type === 'ย้ายไปหน้าร้าน');
 
       const handlePrint = () => {
@@ -426,8 +473,6 @@
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
             <div id="printable-report" className="overflow-y-auto pr-1">
-              
-              {/* Report Header */}
               <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
                 <div>
                   <h1 className="text-2xl font-black text-slate-900">📄 สรุปรายงานการผลิต & สต๊อกประจำวัน</h1>
@@ -438,7 +483,6 @@
                 </div>
               </div>
 
-              {/* Section 1: สรุปการต้มน้ำชา */}
               <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
@@ -463,7 +507,6 @@
                 )}
               </div>
 
-              {/* Section 2: รายการวัตถุดิบใกล้หมด (Warning) */}
               <div className="mb-6 bg-rose-50/60 p-4 rounded-2xl border border-rose-200">
                 <h3 className="font-bold text-rose-800 text-sm mb-3 flex items-center gap-1.5">
                   ⚠️ วัตถุดิบใกล้หมด / ต้องสั่งซื้อเพิ่ม ({lowStockItems.length} รายการ)
@@ -485,7 +528,6 @@
                 )}
               </div>
 
-              {/* Section 3: สรุปการย้ายไปหน้าร้าน */}
               <div className="mb-4 bg-amber-50/60 p-4 rounded-2xl border border-amber-200">
                 <h3 className="font-bold text-amber-900 text-sm mb-3 flex items-center gap-1.5">
                   📤 สรุปการย้ายวัตถุดิบไปหน้าร้านวันนี้
@@ -507,7 +549,6 @@
 
             </div>
 
-            {/* Actions */}
             <div className="pt-4 border-t border-slate-100 flex gap-3 mt-4 no-print">
               <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">
                 ปิดหน้าต่าง
@@ -611,7 +652,7 @@
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">รูปภาพประกอบ</label>
                   <div className="flex items-center space-x-3">
-                    <img src={image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" />
+                    <img src={image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" alt="พรีวิวสูตร" />
                     <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (base64) => setImage(base64))} className="text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
                   </div>
                 </div>
@@ -768,7 +809,6 @@
         );
       }, [logs, searchHistory]);
 
-      // คำนวณหาวัตถุดิบที่เหลือน้อยกว่าจุดเตือนสั่งซื้อ
       const lowStockItems = useMemo(() => {
         return stocks.filter(item => {
           const currentVal = Number(item.current) || 0;
@@ -1134,7 +1174,7 @@
                                   )}
 
                                   <div className="flex items-center space-x-3 mb-4">
-                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-sm" />
+                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-sm" alt={recipe.name} />
                                     <div>
                                       <h3 className="font-bold text-slate-800 text-base">{recipe.name}</h3>
                                       <p className="text-xs text-slate-400">{recipe.yieldInfo}</p>
@@ -1184,7 +1224,7 @@
                               selectedProductionList.map(item => (
                                 <div key={item.recipeId} className="bg-[#131c38] border border-slate-800/80 rounded-2xl p-4 flex justify-between items-center">
                                   <div className="flex items-center space-x-3">
-                                    <img src={item.recipe?.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-700" />
+                                    <img src={item.recipe?.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-700" alt={item.name} />
                                     <div>
                                       <div className="font-bold text-sm text-white">{item.name}</div>
                                       <div className="text-xs text-slate-400">{item.yieldInfo}</div>
@@ -1226,7 +1266,10 @@
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                             {lowStockItems.map(item => (
                               <div key={item.id} className="bg-white p-3 rounded-xl border border-rose-200 flex items-center justify-between">
-                                <span className="font-bold text-sm text-slate-800">{item.name}</span>
+                                <div className="flex items-center space-x-2">
+                                  <img src={item.image || DEFAULT_IMAGE} className="w-8 h-8 rounded-md object-cover" alt={item.name} />
+                                  <span className="font-bold text-sm text-slate-800">{item.name}</span>
+                                </div>
                                 <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-lg">
                                   เหลือ {item.current} {item.unit} (สั่งเพิ่มด่วน)
                                 </span>
@@ -1286,9 +1329,12 @@
                               <div key={item.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
                                 <div>
                                   <div className="flex justify-between items-start mb-3">
-                                    <div>
-                                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
-                                      <h3 className="font-bold text-base text-slate-800 mt-2">{item.name}</h3>
+                                    <div className="flex items-center space-x-3">
+                                      <img src={item.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" alt={item.name} />
+                                      <div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
+                                        <h3 className="font-bold text-base text-slate-800 mt-0.5">{item.name}</h3>
+                                      </div>
                                     </div>
                                     <div className="flex space-x-1">
                                       <button onClick={() => { setEditingStock(item); setStockModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-50">
@@ -1313,8 +1359,7 @@
                                   </div>
                                 </div>
 
-                                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
-                                  <span>ราคาต่อหน่วย: ฿{item.pricePerUnit || 0}</span>
+                                <div className="pt-3 border-t border-slate-100 flex justify-end items-center text-xs text-slate-500">
                                   {isLow && <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded">ใกล้หมด</span>}
                                 </div>
                               </div>
@@ -1363,7 +1408,7 @@
                             <div key={recipe.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition">
                               <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center space-x-3">
-                                  <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
+                                  <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-xl object-cover border border-slate-200" alt={recipe.name} />
                                   <div>
                                     <h3 className="font-bold text-base text-slate-800">{recipe.name}</h3>
                                     <span className="text-xs text-slate-400">{recipe.yieldInfo || '1 หม้อ/ถัง'}</span>
@@ -1496,6 +1541,7 @@
             onClose={() => setStockModalOpen(false)}
             onSave={handleSaveStock}
             editingStock={editingStock}
+            handleImageUpload={handleImageUpload}
           />
 
           <RestockModal
