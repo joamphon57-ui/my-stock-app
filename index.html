@@ -42,9 +42,7 @@
       outline: none;
     }
 
-    input, select, button {
-      touch-action: manipulation;
-    }
+    input, select, button { touch-action: manipulation; }
 
     /* ปุ่มสไตล์แคปซูล (Pill Buttons) */
     .btn-pill {
@@ -90,9 +88,6 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // --- หมวดหมู่คงที่ (Fixed Categories) ---
-    const FIXED_CATEGORIES = ['น้ำปรุงรส', 'น้ำซุป', 'วัตถุดิบหลัก', 'บรรจุภัณฑ์'];
-
     // --- Firebase Configuration ---
     const firebaseConfig = {
       apiKey: "AIzaSyD3wBGAwKShNdgQ9koIOc012Rr7G3PThaQ",
@@ -110,11 +105,7 @@
     const db = firebase.firestore();
 
     db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.log('Offline Persistence: มีการเปิดเว็บหลายแท็บพร้อมกัน');
-      } else if (err.code === 'unimplemented') {
-        console.log('Offline Persistence: เบราว์เซอร์ไม่รองรับ');
-      }
+      if (err.code === 'failed-precondition') console.log('Offline Persistence: แท็บซ้ำ');
     });
 
     const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=150';
@@ -124,10 +115,8 @@
       const sUnit = (stockUnit || '').toLowerCase().trim();
 
       if (rUnit === sUnit) return amount;
-      
       if ((rUnit === 'กรัม' || rUnit === 'g') && (sUnit === 'กิโลกรัม' || sUnit === 'kg')) return amount / 1000;
       if ((rUnit === 'กิโลกรัม' || rUnit === 'kg') && (sUnit === 'กรัม' || sUnit === 'g')) return amount * 1000;
-
       if ((rUnit === 'มล.' || rUnit === 'ml') && (sUnit === 'ลิตร' || sUnit === 'l')) return amount / 1000;
       if ((rUnit === 'ลิตร' || rUnit === 'l') && (sUnit === 'มล.' || sUnit === 'ml')) return amount * 1000;
 
@@ -135,33 +124,101 @@
     };
 
     // ==========================================
+    // MODAL: จัดการหมวดหมู่ (Category Management)
+    // ==========================================
+    function CategoryModal({ isOpen, onClose, categories, onAddCategory, onDeleteCategory }) {
+      const [newCatName, setNewCatName] = useState('');
+
+      if (!isOpen) return null;
+
+      const handleAdd = (e) => {
+        e.preventDefault();
+        if (!newCatName.trim()) return;
+        onAddCategory(newCatName.trim());
+        setNewCatName('');
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                  <i data-lucide="tag" className="w-5 h-5 text-emerald-600"></i>
+                  จัดการหมวดหมู่สินค้า
+                </h3>
+                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                  <i data-lucide="x" className="w-5 h-5"></i>
+                </button>
+              </div>
+
+              <form onSubmit={handleAdd} className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  placeholder="เพิ่มหมวดหมู่ใหม่..."
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  className="flex-1 px-3 py-2 text-xs sm:text-sm rounded-xl custom-input"
+                />
+                <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition">
+                  + เพิ่ม
+                </button>
+              </form>
+
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                {categories.map(cat => (
+                  <div key={cat.id} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl flex justify-between items-center text-xs font-semibold text-slate-700">
+                    <span>{cat.name}</span>
+                    <button onClick={() => onDeleteCategory(cat.id)} className="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50">
+                      <i data-lucide="trash-2" className="w-4 h-4"></i>
+                    </button>
+                  </div>
+                ))}
+                {categories.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 text-xs italic">ยังไม่มีหมวดหมู่</div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 mt-4 text-right">
+              <button onClick={onClose} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition">
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
     // 1. MODAL: เพิ่ม/แก้ไข วัตถุดิบ (Stock Modal)
     // ==========================================
-    function StockModal({ isOpen, onClose, onSave, editingStock, handleImageUpload }) {
+    function StockModal({ isOpen, onClose, onSave, editingStock, handleImageUpload, categories, onOpenCategoryModal }) {
       const [name, setName] = useState('');
-      const [category, setCategory] = useState(FIXED_CATEGORIES[0]);
+      const [category, setCategory] = useState('');
       const [current, setCurrent] = useState('');
       const [unit, setUnit] = useState('ถัง');
       const [minAlert, setMinAlert] = useState('5');
       const [image, setImage] = useState('');
 
       useEffect(() => {
+        const defaultCat = categories.length > 0 ? categories[0].name : 'ทั่วไป';
         if (editingStock) {
           setName(editingStock.name || '');
-          setCategory(editingStock.category || FIXED_CATEGORIES[0]);
+          setCategory(editingStock.category || defaultCat);
           setCurrent(editingStock.current !== undefined ? editingStock.current : '');
           setUnit(editingStock.unit || 'ถัง');
           setMinAlert(editingStock.minAlert !== undefined ? editingStock.minAlert : '5');
           setImage(editingStock.image || '');
         } else {
           setName('');
-          setCategory(FIXED_CATEGORIES[0]);
+          setCategory(defaultCat);
           setCurrent('');
           setUnit('ถัง');
           setMinAlert('5');
           setImage('');
         }
-      }, [editingStock, isOpen]);
+      }, [editingStock, isOpen, categories]);
 
       if (!isOpen) return null;
 
@@ -199,11 +256,15 @@
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่ (กำหนดไว้เฉพาะ)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-slate-600">หมวดหมู่</label>
+                  <button type="button" onClick={onOpenCategoryModal} className="text-[11px] text-emerald-600 font-bold hover:underline">⚙️ จัดการหมวดหมู่</button>
+                </div>
                 <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-3 text-sm rounded-xl custom-input">
-                  {FIXED_CATEGORIES.map((cat, idx) => (
-                    <option key={idx} value={cat}>{cat}</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
                   ))}
+                  {categories.length === 0 && <option value="ทั่วไป">ทั่วไป</option>}
                 </select>
               </div>
 
@@ -346,7 +407,7 @@
     }
 
     // ==========================================
-    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal) - Fixed
+    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
       const [stockId, setStockId] = useState('');
@@ -367,15 +428,10 @@
           setSearchQuery('');
           setQty('');
           setNote('แบ่งขาย / ตั้งขายหน้าร้าน');
-          if (stocks && stocks.length > 0) {
-            setStockId(stocks[0].id);
-          } else {
-            setStockId('');
-          }
+          if (stocks && stocks.length > 0) setStockId(stocks[0].id);
         }
       }, [isOpen, stocks]);
 
-      // เมื่อการค้นหาเปลี่ยนไป ให้อัปเดต stockId ไปยังรายการแรกที่ค้นพบ
       useEffect(() => {
         if (filteredStocksForTransfer.length > 0) {
           if (!filteredStocksForTransfer.some(s => s.id === stockId)) {
@@ -472,9 +528,9 @@
     }
 
     // ==========================================
-    // 4. MODAL: สรุปรายงานประจำวัน (Card Summary Layout)
+    // 4. MODAL: สรุปรายงานประจำวัน (นำหน้ารวมสต๊อกออกแล้ว)
     // ==========================================
-    function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems, stocks }) {
+    function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems }) {
       if (!isOpen) return null;
 
       const todayStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -509,9 +565,7 @@
 
       const transferLogs = todayLogs.filter(l => l.type === 'ย้ายไปหน้าร้าน');
 
-      const handlePrint = () => {
-        window.print();
-      };
+      const handlePrint = () => { window.print(); };
 
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -525,40 +579,6 @@
                 </div>
                 <div className="text-right text-[11px] text-slate-400">
                   ระบบสต๊อกร้านติดใจ
-                </div>
-              </div>
-
-              {/* --- Card สรุปสต๊อกทั้งหมดแบบแสดงผลบนมือถือได้อย่างเหมาะสม --- */}
-              <div className="mb-5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <h3 className="font-bold text-slate-800 text-xs sm:text-sm mb-2.5 flex items-center justify-between">
-                  <span>📊 หน้ารวมสรุปวัตถุดิบคงเหลือทั้งหมด</span>
-                  <span className="text-[10px] text-slate-500 font-normal">แสดงผลครบถ้วน</span>
-                </h3>
-
-                <div className="space-y-2">
-                  {stocks.map(s => {
-                    const isLow = Number(s.current) <= Number(s.minAlert || 0);
-                    return (
-                      <div key={s.id} className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-1 shadow-sm">
-                        <div className="flex items-center space-x-2.5">
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            {s.category || 'วัตถุดิบ'}
-                          </span>
-                          <span className="font-bold text-xs sm:text-sm text-slate-800">{s.name}</span>
-                        </div>
-                        <div className="flex justify-between sm:justify-end items-center gap-2 text-xs border-t sm:border-t-0 pt-1 sm:pt-0 mt-1 sm:mt-0">
-                          <span className="text-slate-400 text-[10px]">คงเหลือ:</span>
-                          <span className={`font-bold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>
-                            {s.current} {s.unit}
-                          </span>
-                          {isLow && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">ใกล้หมด</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {stocks.length === 0 && (
-                    <div className="text-xs text-slate-400 italic text-center py-2">ไม่มีข้อมูลวัตถุดิบ</div>
-                  )}
                 </div>
               </div>
 
@@ -767,42 +787,40 @@
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {ingredients.map((ing, idx) => {
-                        return (
-                          <div key={idx} className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                            <select
-                              value={ing.stockId}
-                              onChange={(e) => handleIngredientChange(idx, 'stockId', e.target.value)}
-                              className="flex-1 px-2.5 py-2 text-xs rounded-lg custom-input font-medium"
-                            >
-                              {stocks.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                            </select>
+                      {ingredients.map((ing, idx) => (
+                        <div key={idx} className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <select
+                            value={ing.stockId}
+                            onChange={(e) => handleIngredientChange(idx, 'stockId', e.target.value)}
+                            className="flex-1 px-2.5 py-2 text-xs rounded-lg custom-input font-medium"
+                          >
+                            {stocks.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
 
-                            <input
-                              type="number"
-                              step="any"
-                              placeholder="จำนวน"
-                              value={ing.amount}
-                              onChange={(e) => handleIngredientChange(idx, 'amount', e.target.value)}
-                              className="w-20 px-2 py-2 text-xs rounded-lg custom-input font-bold text-center"
-                            />
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="จำนวน"
+                            value={ing.amount}
+                            onChange={(e) => handleIngredientChange(idx, 'amount', e.target.value)}
+                            className="w-20 px-2 py-2 text-xs rounded-lg custom-input font-bold text-center"
+                          />
 
-                            <input
-                              type="text"
-                              placeholder="หน่วย"
-                              value={ing.unit || ''}
-                              onChange={(e) => handleIngredientChange(idx, 'unit', e.target.value)}
-                              className="w-16 px-2 py-2 text-xs rounded-lg custom-input text-center"
-                            />
+                          <input
+                            type="text"
+                            placeholder="หน่วย"
+                            value={ing.unit || ''}
+                            onChange={(e) => handleIngredientChange(idx, 'unit', e.target.value)}
+                            className="w-16 px-2 py-2 text-xs rounded-lg custom-input text-center"
+                          />
 
-                            <button type="button" onClick={() => handleRemoveIngredient(idx)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
-                              <i data-lucide="trash-2" className="w-4 h-4"></i>
-                            </button>
-                          </div>
-                        );
-                      })}
+                          <button type="button" onClick={() => handleRemoveIngredient(idx)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
+                            <i data-lucide="trash-2" className="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -826,6 +844,7 @@
       const [stocks, setStocks] = useState([]);
       const [recipes, setRecipes] = useState([]);
       const [logs, setLogs] = useState([]);
+      const [categories, setCategories] = useState([]);
       const [loading, setLoading] = useState(true);
 
       // Search & Filter States
@@ -849,22 +868,35 @@
       const [recipeModalOpen, setRecipeModalOpen] = useState(false);
       const [editingRecipe, setEditingRecipe] = useState(null);
 
+      const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+
       useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
       });
 
       // --- Firebase Listener ---
       useEffect(() => {
+        const unsubCategories = db.collection('categories').onSnapshot(snapshot => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // ถ้าไม่มีข้อมูลในหมวดหมู่ ให้ตั้งค่าเริ่มต้น
+          if (data.length === 0) {
+            const defaults = ['น้ำปรุงรส', 'น้ำซุป', 'วัตถุดิบหลัก', 'บรรจุภัณฑ์'];
+            defaults.forEach(cat => db.collection('categories').add({ name: cat }));
+          } else {
+            setCategories(data);
+          }
+        });
+
         const unsubStocks = db.collection('stocks').onSnapshot(snapshot => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setStocks(data);
           setLoading(false);
-        }, err => console.error("Error stocks:", err));
+        });
 
         const unsubRecipes = db.collection('recipes').onSnapshot(snapshot => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setRecipes(data);
-        }, err => console.error("Error recipes:", err));
+        });
 
         const unsubLogs = db.collection('logs').onSnapshot(snapshot => {
           const data = snapshot.docs.map(doc => {
@@ -877,14 +909,29 @@
           });
           data.sort((a, b) => b.createdTime - a.createdTime);
           setLogs(data);
-        }, err => console.error("Error logs:", err));
+        });
 
         return () => {
+          unsubCategories();
           unsubStocks();
           unsubRecipes();
           unsubLogs();
         };
       }, []);
+
+      // Category Actions
+      const handleAddCategory = async (catName) => {
+        if (categories.some(c => c.name.toLowerCase() === catName.toLowerCase())) {
+          return alert('หมวดหมู่นี้มีอยู่แล้ว');
+        }
+        await db.collection('categories').add({ name: catName });
+      };
+
+      const handleDeleteCategory = async (catId) => {
+        if (confirm('คุณต้องการลบหมวดหมู่นี้ใช่หรือไม่?')) {
+          await db.collection('categories').doc(catId).delete();
+        }
+      };
 
       const filteredProductionRecipes = useMemo(() => {
         return recipes.filter(r => r.name.toLowerCase().includes(searchProduction.toLowerCase()));
@@ -894,9 +941,7 @@
         return stocks.filter(s => {
           const matchSearch = s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
                              (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase()));
-          
           const matchCategory = selectedCategory === 'all' || s.category === selectedCategory;
-
           return matchSearch && matchCategory;
         });
       }, [stocks, searchStock, selectedCategory]);
@@ -964,8 +1009,8 @@
 
         try {
           const batch = db.batch();
-
           const deductionsSummary = {};
+
           selectedProductionList.forEach(item => {
             if (item.recipe && item.recipe.ingredients) {
               item.recipe.ingredients.forEach(ing => {
@@ -1109,7 +1154,7 @@
         }
       };
 
-      // --- Transfer to Storefront Handler ---
+      // --- Transfer Handler ---
       const handleTransferToStorefront = async (stockId, qty, note) => {
         try {
           const stockItem = stocks.find(s => s.id === stockId);
@@ -1177,7 +1222,7 @@
       return (
         <div className="min-h-screen flex flex-col justify-between">
           <div>
-            {/* Header & Navbar */}
+            {/* Header */}
             <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
               <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between border-b border-slate-100 sm:border-none">
                 <div className="flex items-center space-x-2.5">
@@ -1215,9 +1260,7 @@
                   <button onClick={() => setActiveTab('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="boxes" className="w-4 h-4"></i>
                     <span>คลังวัตถุดิบ</span>
-                    {lowStockItems.length > 0 && (
-                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    )}
+                    {lowStockItems.length > 0 && <span className="w-2 h-2 rounded-full bg-rose-500"></span>}
                   </button>
 
                   <button onClick={() => setActiveTab('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
@@ -1240,10 +1283,9 @@
                 <div className="text-center py-20 text-slate-400 font-medium text-sm">กำลังโหลดข้อมูลระบบ...</div>
               ) : (
                 <>
-                  {/* ================= TAB 1: บันทึกการผลิต ================= */}
+                  {/* TAB 1: บันทึกการผลิต */}
                   {activeTab === 'production' && (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      
                       <div className="lg:col-span-7 bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                         <div className="mb-4 sm:mb-6">
                           <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -1275,7 +1317,6 @@
                               const isSelected = qty > 0;
                               return (
                                 <div key={recipe.id} className={`border-2 rounded-2xl p-3.5 sm:p-4 transition-all duration-200 relative flex flex-col justify-between ${isSelected ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                  
                                   {isSelected && (
                                     <div className="absolute top-3 right-3 bg-emerald-500 text-white rounded-full p-0.5">
                                       <i data-lucide="check" className="w-3.5 h-3.5"></i>
@@ -1353,11 +1394,10 @@
                           </button>
                         </div>
                       </div>
-
                     </div>
                   )}
 
-                  {/* ================= TAB 2: คลังวัตถุดิบ ================= */}
+                  {/* TAB 2: คลังวัตถุดิบ */}
                   {activeTab === 'stock' && (
                     <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                       
@@ -1396,7 +1436,6 @@
                           <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
                         </div>
                         
-                        {/* --- ปุ่มทรงแคปซูล Pill Buttons --- */}
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                           <button onClick={() => setTransferModalOpen(true)} className="btn-pill btn-orange-pill text-xs sm:text-sm px-5 py-2.5 active:scale-95">
                             <i data-lucide="upload" className="w-4 h-4"></i> ย้ายไปหน้าร้าน
@@ -1412,7 +1451,7 @@
                         </div>
                       </div>
 
-                      {/* --- ค้นหา & ปุ่ม Filter หมวดหมู่ --- */}
+                      {/* ค้นหา & หมวดหมู่ */}
                       <div className="space-y-3 mb-5">
                         <div className="relative">
                           <input
@@ -1428,7 +1467,7 @@
                           )}
                         </div>
 
-                        {/* ปุ่ม Filter หมวดหมู่ */}
+                        {/* Filter หมวดหมู่แบบยืดหยุ่น + ปุ่มจัดการ */}
                         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
                           <button
                             onClick={() => setSelectedCategory('all')}
@@ -1440,19 +1479,25 @@
                           >
                             ทั้งหมด
                           </button>
-                          {FIXED_CATEGORIES.map((cat, idx) => (
+                          {categories.map((cat) => (
                             <button
-                              key={idx}
-                              onClick={() => setSelectedCategory(cat)}
+                              key={cat.id}
+                              onClick={() => setSelectedCategory(cat.name)}
                               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                                selectedCategory === cat
+                                selectedCategory === cat.name
                                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                               }`}
                             >
-                              {cat}
+                              {cat.name}
                             </button>
                           ))}
+                          <button
+                            onClick={() => setCategoryModalOpen(true)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all whitespace-nowrap flex items-center gap-1"
+                          >
+                            <span>⚙️</span> จัดการหมวดหมู่
+                          </button>
                         </div>
                       </div>
 
@@ -1472,7 +1517,7 @@
                                     <div className="flex items-center space-x-3">
                                       <img src={item.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" alt={item.name} />
                                       <div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{item.category || FIXED_CATEGORIES[0]}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
                                         <h3 className="font-bold text-sm sm:text-base text-slate-800 mt-0.5">{item.name}</h3>
                                       </div>
                                     </div>
@@ -1511,7 +1556,7 @@
                     </div>
                   )}
 
-                  {/* ================= TAB 3: สูตรการผลิต (BOM) ================= */}
+                  {/* TAB 3: สูตรการผลิต (BOM) */}
                   {activeTab === 'bom' && (
                     <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
@@ -1586,7 +1631,7 @@
                     </div>
                   )}
 
-                  {/* ================= TAB 4: ประวัติย้อนหลัง ================= */}
+                  {/* TAB 4: ประวัติย้อนหลัง */}
                   {activeTab === 'history' && (
                     <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
@@ -1676,12 +1721,22 @@
           </footer>
 
           {/* Render Modals */}
+          <CategoryModal
+            isOpen={categoryModalOpen}
+            onClose={() => setCategoryModalOpen(false)}
+            categories={categories}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
+          />
+
           <StockModal
             isOpen={stockModalOpen}
             onClose={() => setStockModalOpen(false)}
             onSave={handleSaveStock}
             editingStock={editingStock}
             handleImageUpload={handleImageUpload}
+            categories={categories}
+            onOpenCategoryModal={() => setCategoryModalOpen(true)}
           />
 
           <RestockModal
@@ -1703,7 +1758,6 @@
             onClose={() => setPrintModalOpen(false)}
             logs={logs}
             lowStockItems={lowStockItems}
-            stocks={stocks}
           />
 
           <RecipeModal
