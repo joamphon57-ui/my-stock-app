@@ -46,7 +46,7 @@
       touch-action: manipulation;
     }
 
-    /* ปุ่มสไตล์แคปซูล (Pill Buttons) ตามตัวอย่าง */
+    /* ปุ่มสไตล์แคปซูล (Pill Buttons) */
     .btn-pill {
       display: inline-flex;
       align-items: center;
@@ -90,7 +90,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // --- หมวดหมู่คงที่ (Fixed Categories) ล็อกไว้เฉพาะที่คุณกำหนด ---
+    // --- หมวดหมู่คงที่ (Fixed Categories) ---
     const FIXED_CATEGORIES = ['น้ำปรุงรส', 'น้ำซุป', 'วัตถุดิบหลัก', 'บรรจุภัณฑ์'];
 
     // --- Firebase Configuration ---
@@ -346,7 +346,7 @@
     }
 
     // ==========================================
-    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
+    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal) - Fixed
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
       const [stockId, setStockId] = useState('');
@@ -355,20 +355,36 @@
       const [note, setNote] = useState('');
 
       const filteredStocksForTransfer = useMemo(() => {
+        if (!searchQuery) return stocks;
         return stocks.filter(s => 
-          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (s.name && s.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
         );
       }, [stocks, searchQuery]);
 
       useEffect(() => {
-        if (isOpen && stocks.length > 0) {
-          setStockId(stocks[0].id);
+        if (isOpen) {
           setSearchQuery('');
           setQty('');
           setNote('แบ่งขาย / ตั้งขายหน้าร้าน');
+          if (stocks && stocks.length > 0) {
+            setStockId(stocks[0].id);
+          } else {
+            setStockId('');
+          }
         }
       }, [isOpen, stocks]);
+
+      // เมื่อการค้นหาเปลี่ยนไป ให้อัปเดต stockId ไปยังรายการแรกที่ค้นพบ
+      useEffect(() => {
+        if (filteredStocksForTransfer.length > 0) {
+          if (!filteredStocksForTransfer.some(s => s.id === stockId)) {
+            setStockId(filteredStocksForTransfer[0].id);
+          }
+        } else {
+          setStockId('');
+        }
+      }, [filteredStocksForTransfer]);
 
       if (!isOpen) return null;
 
@@ -413,7 +429,7 @@
                     <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
                   ))}
                   {filteredStocksForTransfer.length === 0 && (
-                    <option value="" disabled>ไม่พบวัตถุดิบที่ค้นหา</option>
+                    <option value="" disabled>ไม่พบวัตถุดิบในคลัง</option>
                   )}
                 </select>
               </div>
@@ -456,7 +472,7 @@
     }
 
     // ==========================================
-    // 4. MODAL: สรุปรายงานประจำวัน & แสดงผลแบบ Card สรุปครบถ้วนบนมือถือ
+    // 4. MODAL: สรุปรายงานประจำวัน (Card Summary Layout)
     // ==========================================
     function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems, stocks }) {
       if (!isOpen) return null;
@@ -472,15 +488,14 @@
         return l.datetime.includes(`${d}/${m}/${y}`);
       });
 
-      const productionLogs = todayLogs.filter(l => l.type === 'ต้มผลิต');
+      const productionLogs = todayLogs.filter(l => l.type === 'ปรุงผลิต' || l.type === 'ต้มผลิต');
       let totalBuckets = 0;
       const recipeSummary = {};
 
       productionLogs.forEach(l => {
         if (l.title) {
-          const items = l.title.replace('ต้ม ', '').split(', ');
+          const items = l.title.replace(/^(ปรุง|ต้ม)\s+/, '').split(', ');
           items.forEach(item => {
-            // เปลี่ยนregex รองรับคำว่า ถัง และ หม้อ
             const match = item.match(/(.+) \((\d+) (ถัง|หม้อ)\)/);
             if (match) {
               const name = match[1].trim();
@@ -513,7 +528,7 @@
                 </div>
               </div>
 
-              {/* --- แสดงรายการสรุปสต๊อกทั้งหมดแบบ Card เรียงลงมาครบถ้วน (เหมาะกับมือถือ) --- */}
+              {/* --- Card สรุปสต๊อกทั้งหมดแบบแสดงผลบนมือถือได้อย่างเหมาะสม --- */}
               <div className="mb-5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                 <h3 className="font-bold text-slate-800 text-xs sm:text-sm mb-2.5 flex items-center justify-between">
                   <span>📊 หน้ารวมสรุปวัตถุดิบคงเหลือทั้งหมด</span>
@@ -527,7 +542,7 @@
                       <div key={s.id} className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-1 shadow-sm">
                         <div className="flex items-center space-x-2.5">
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            {s.category || 'น้ำปรุง'}
+                            {s.category || 'วัตถุดิบ'}
                           </span>
                           <span className="font-bold text-xs sm:text-sm text-slate-800">{s.name}</span>
                         </div>
@@ -541,6 +556,9 @@
                       </div>
                     );
                   })}
+                  {stocks.length === 0 && (
+                    <div className="text-xs text-slate-400 italic text-center py-2">ไม่มีข้อมูลวัตถุดิบ</div>
+                  )}
                 </div>
               </div>
 
@@ -1378,7 +1396,7 @@
                           <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
                         </div>
                         
-                        {/* --- ปุ่มรูปแบบตัวอย่าง Pills ทรงแคปซูล --- */}
+                        {/* --- ปุ่มทรงแคปซูล Pill Buttons --- */}
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                           <button onClick={() => setTransferModalOpen(true)} className="btn-pill btn-orange-pill text-xs sm:text-sm px-5 py-2.5 active:scale-95">
                             <i data-lucide="upload" className="w-4 h-4"></i> ย้ายไปหน้าร้าน
@@ -1394,7 +1412,7 @@
                         </div>
                       </div>
 
-                      {/* --- ส่วนค้นหา & ปุ่มกดเลือกหมวดหมู่ที่ล็อกไว้ --- */}
+                      {/* --- ค้นหา & ปุ่ม Filter หมวดหมู่ --- */}
                       <div className="space-y-3 mb-5">
                         <div className="relative">
                           <input
@@ -1410,7 +1428,7 @@
                           )}
                         </div>
 
-                        {/* ปุ่ม Filter หมวดหมู่ที่ถูกล็อก */}
+                        {/* ปุ่ม Filter หมวดหมู่ */}
                         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
                           <button
                             onClick={() => setSelectedCategory('all')}
