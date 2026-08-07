@@ -407,7 +407,7 @@
     }
 
     // ==========================================
-    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
+    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
       const [stockId, setStockId] = useState('');
@@ -427,7 +427,7 @@
         if (isOpen) {
           setSearchQuery('');
           setQty('');
-          setNote('ลงชื่อผู้เอาออก');
+          setNote('เอาของออกไปหน้าร้าน');
           if (stocks && stocks.length > 0) setStockId(stocks[0].id);
         }
       }, [isOpen, stocks]);
@@ -461,7 +461,7 @@
             <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <i data-lucide="share" className="w-5 h-5 text-amber-600"></i>
-                📤 ย้ายวัตถุดิบไปหน้าร้าน
+                📤 เอาของออกไปหน้าร้าน
               </h3>
               <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
                 <i data-lucide="x" className="w-5 h-5"></i>
@@ -491,7 +491,7 @@
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่ต้องการย้ายออกไปหน้าร้าน <span className="text-rose-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่ต้องการเอาของออกไปหน้าร้าน <span className="text-rose-500">*</span></label>
                 <div className="flex items-center space-x-2">
                   <input
                     type="number"
@@ -510,7 +510,7 @@
                 <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ</label>
                 <input
                   type="text"
-                  placeholder="เช่น ย้ายไปหน้าร้าน 2 ถัง"
+                  placeholder="เช่น เอาออกไปหน้าร้าน 2 ถัง"
                   value={note}
                   onChange={e => setNote(e.target.value)}
                   className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
@@ -519,7 +519,7 @@
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">ยืนยันการย้าย</button>
+                <button type="submit" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">ยืนยันเอาของออก</button>
               </div>
             </form>
           </div>
@@ -528,7 +528,7 @@
     }
 
     // ==========================================
-    // 4. MODAL: สรุปรายงานประจำวัน (นำหน้ารวมสต๊อกออกแล้ว)
+    // 4. MODAL: สรุปรายงานประจำวัน (ปรับปรุงใหม่ตามที่ขอ)
     // ==========================================
     function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems }) {
       if (!isOpen) return null;
@@ -563,7 +563,7 @@
         }
       });
 
-      const transferLogs = todayLogs.filter(l => l.type === 'ย้ายไปหน้าร้าน');
+      const transferLogs = todayLogs.filter(l => l.type === 'เอาของออกไปหน้าร้าน' || l.type === 'ย้ายไปหน้าร้าน');
 
       const handlePrint = () => { window.print(); };
 
@@ -582,7 +582,7 @@
                 </div>
               </div>
 
-              {/* สรุปการปรุง/ผลิต */}
+              {/* 1. สรุปการปรุง/ผลิต */}
               <div className="mb-5 bg-emerald-50/50 p-3.5 rounded-2xl border border-emerald-200">
                 <div className="flex justify-between items-center mb-2.5">
                   <h3 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
@@ -607,7 +607,7 @@
                 )}
               </div>
 
-              {/* เตือนวัตถุดิบใกล้หมด */}
+              {/* 2. เตือนวัตถุดิบใกล้หมด */}
               <div className="mb-5 bg-rose-50/60 p-3.5 rounded-2xl border border-rose-200">
                 <h3 className="font-bold text-rose-800 text-xs sm:text-sm mb-2.5 flex items-center gap-1.5">
                   ⚠️ วัตถุดิบใกล้หมด / ต้องสั่งซื้อเพิ่ม ({lowStockItems.length} รายการ)
@@ -629,14 +629,14 @@
                 )}
               </div>
 
-              {/* สรุปการย้ายไปหน้าร้าน */}
+              {/* 3. สรุปการเอาของออกไปหน้าร้าน */}
               <div className="mb-2 bg-amber-50/60 p-3.5 rounded-2xl border border-amber-200">
                 <h3 className="font-bold text-amber-900 text-xs sm:text-sm mb-2.5 flex items-center gap-1.5">
-                  📤 สรุปการย้ายวัตถุดิบไปหน้าร้านวันนี้
+                  📤 สรุปการเอาของออกไปหน้าร้านวันนี้
                 </h3>
 
                 {transferLogs.length === 0 ? (
-                  <div className="text-xs text-slate-500 italic">ไม่มีรายการย้ายไปหน้าร้านในวันนี้</div>
+                  <div className="text-xs text-slate-500 italic">ไม่มีรายการเอาของออกไปหน้าร้านในวันนี้</div>
                 ) : (
                   <div className="space-y-2 text-xs">
                     {transferLogs.map(l => (
@@ -878,7 +878,6 @@
       useEffect(() => {
         const unsubCategories = db.collection('categories').onSnapshot(snapshot => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // ถ้าไม่มีข้อมูลในหมวดหมู่ ให้ตั้งค่าเริ่มต้น
           if (data.length === 0) {
             const defaults = ['น้ำปรุงรส', 'น้ำซุป', 'วัตถุดิบหลัก', 'บรรจุภัณฑ์'];
             defaults.forEach(cat => db.collection('categories').add({ name: cat }));
@@ -1179,18 +1178,18 @@
           batch.set(logRef, {
             datetime: timeStr,
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            type: 'ย้ายไปหน้าร้าน',
-            title: `ย้าย ${stockItem.name} (${qty} ${stockItem.unit}) ออกไปหน้าร้าน`,
+            type: 'เอาของออกไปหน้าร้าน',
+            title: `เอาของ ${stockItem.name} (${qty} ${stockItem.unit}) ออกไปหน้าร้าน`,
             details: [`${stockItem.name}: -${qty} ${stockItem.unit}`],
-            note: note || 'ย้ายไปตั้งขายหน้าร้าน'
+            note: note || 'เอาของออกไปหน้าร้าน'
           });
 
           await batch.commit();
           setTransferModalOpen(false);
-          alert(`ย้าย ${stockItem.name} ออกไปหน้าร้านเรียบร้อยแล้ว!`);
+          alert(`เอาของ ${stockItem.name} ออกไปหน้าร้านเรียบร้อยแล้ว!`);
         } catch (err) {
           console.error("Transfer error:", err);
-          alert("เกิดข้อผิดพลาดในการย้ายวัตถุดิบ");
+          alert("เกิดข้อผิดพลาดในการเอาของออกไปหน้าร้าน");
         }
       };
 
@@ -1433,12 +1432,12 @@
                           <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📦</span> คลังวัตถุดิบคงเหลือ (Real-time Stock)
                           </h2>
-                          <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
+                          <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือเอาของออกไปหน้าร้าน</p>
                         </div>
                         
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                           <button onClick={() => setTransferModalOpen(true)} className="btn-pill btn-orange-pill text-xs sm:text-sm px-5 py-2.5 active:scale-95">
-                            <i data-lucide="upload" className="w-4 h-4"></i> ย้ายไปหน้าร้าน
+                            <i data-lucide="upload" className="w-4 h-4"></i> เอาของออกไปหน้าร้าน
                           </button>
 
                           <button onClick={() => setRestockModalOpen(true)} className="btn-pill btn-green-pill text-xs sm:text-sm px-5 py-2.5 active:scale-95">
@@ -1639,7 +1638,7 @@
                           <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📜</span> ประวัติการทำรายการย้อนหลัง
                           </h2>
-                          <p className="text-xs text-slate-400 mt-0.5">ประวัติการปรุง การเติมวัตถุดิบ และการย้ายออกหน้าร้านทั้งหมด</p>
+                          <p className="text-xs text-slate-400 mt-0.5">ประวัติการปรุง การเติมวัตถุดิบ และการเอาของออกไปหน้าร้านทั้งหมด</p>
                         </div>
                         {logs.length > 0 && (
                           <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-3.5 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
@@ -1668,7 +1667,7 @@
                         <div className="space-y-3 sm:space-y-4">
                           {filteredLogs.map(log => {
                             const isProduction = log.type === 'ปรุงผลิต' || log.type === 'ต้มผลิต';
-                            const isTransfer = log.type === 'ย้ายไปหน้าร้าน';
+                            const isTransfer = log.type === 'เอาของออกไปหน้าร้าน' || log.type === 'ย้ายไปหน้าร้าน';
 
                             let badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                             if (isProduction) badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
