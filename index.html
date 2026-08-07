@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ระบบสต๊อกของร้านติดใจ & เติมของร้านติดใจ</title>
+  <title>ระบบสต๊อกของร้านติดใจ & เติมของร้านติดใจ (Mobile Edition)</title>
   <meta property="og:title" content="ระบบสต๊อกของ & เติมของ" />
   <meta property="og:description" content="ระบบจัดการสต๊อก คำนวณการปรุง และเติมของประจำวัน" />
 
@@ -18,16 +18,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Barcode / QR Scanner Library -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
   <style>
-    body { font-family: 'Prompt', sans-serif; background-color: #f1f5f9; }
+    body { font-family: 'Prompt', sans-serif; background-color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
     .custom-shadow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); }
     .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none;  scrollbar-width: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     
     .custom-input {
       background-color: #f8fafc;
@@ -40,6 +42,11 @@
       border-color: #10b981;
       box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
       outline: none;
+    }
+
+    /* Target mobile touch optimization */
+    input, select, button {
+      touch-action: manipulation;
     }
 
     /* Print Styles */
@@ -55,7 +62,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
 
     // --- Firebase Configuration ---
     const firebaseConfig = {
@@ -83,12 +90,84 @@
 
     const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=150';
 
+    // Helper: Convert Units (Grams/Kg, Ml/Liters)
+    const convertUnitToStock = (amount, recipeUnit, stockUnit) => {
+      const rUnit = (recipeUnit || '').toLowerCase().trim();
+      const sUnit = (stockUnit || '').toLowerCase().trim();
+
+      if (rUnit === sUnit) return amount;
+      
+      // Grams & Kilograms
+      if ((rUnit === 'กรัม' || rUnit === 'g') && (sUnit === 'กิโลกรัม' || sUnit === 'kg')) return amount / 1000;
+      if ((rUnit === 'กิโลกรัม' || rUnit === 'kg') && (sUnit === 'กรัม' || sUnit === 'g')) return amount * 1000;
+
+      // ML & Liters
+      if ((rUnit === 'มล.' || rUnit === 'ml') && (sUnit === 'ลิตร' || sUnit === 'l')) return amount / 1000;
+      if ((rUnit === 'ลิตร' || rUnit === 'l') && (sUnit === 'มล.' || sUnit === 'ml')) return amount * 1000;
+
+      return amount;
+    };
+
+    // ==========================================
+    // CAMERA BARCODE SCANNER MODAL
+    // ==========================================
+    function BarcodeScannerModal({ isOpen, onClose, onScanSuccess }) {
+      const videoRef = useRef(null);
+      const codeReaderRef = useRef(null);
+
+      useEffect(() => {
+        if (isOpen) {
+          const codeReader = new ZXing.BrowserMultiFormatReader();
+          codeReaderRef.current = codeReader;
+
+          codeReader.decodeFromVideoDevice(undefined, videoRef.current, (result, err) => {
+            if (result) {
+              onScanSuccess(result.getText());
+              onClose();
+            }
+          }).catch(err => console.error(err));
+        } else {
+          if (codeReaderRef.current) {
+            codeReaderRef.current.reset();
+          }
+        }
+
+        return () => {
+          if (codeReaderRef.current) {
+            codeReaderRef.current.reset();
+          }
+        };
+      }, [isOpen]);
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl flex flex-col items-center">
+            <div className="w-full flex justify-between items-center mb-3">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i data-lucide="scan" className="w-4 h-4 text-emerald-600"></i> สแกนบาร์โค้ดวัตถุดิบ
+              </h3>
+              <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" className="w-5 h-5"></i>
+              </button>
+            </div>
+            <div className="w-full h-56 bg-black rounded-2xl overflow-hidden relative border-2 border-emerald-500">
+              <video ref={videoRef} className="w-full h-full object-cover"></video>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-3 text-center">ส่องบาร์โค้ดให้อยู่ในกรอบเพื่อค้นหาวัตถุดิบอัตโนมัติ</p>
+          </div>
+        </div>
+      );
+    }
+
     // ==========================================
     // 1. MODAL: เพิ่ม/แก้ไข วัตถุดิบ (Stock Modal)
     // ==========================================
     function StockModal({ isOpen, onClose, onSave, editingStock, handleImageUpload }) {
       const [name, setName] = useState('');
       const [category, setCategory] = useState('ชา/กาแฟ');
+      const [barcode, setBarcode] = useState('');
       const [categoriesList, setCategoriesList] = useState([
         'ชา/กาแฟ', 'นม/น้ำตาล', 'ไซรัป/ยา', 'ท็อปปิ้ง', 'บรรจุภัณฑ์', 'อื่นๆ'
       ]);
@@ -96,11 +175,13 @@
       const [unit, setUnit] = useState('กรัม');
       const [minAlert, setMinAlert] = useState('500');
       const [image, setImage] = useState('');
+      const [isScannerOpen, setIsScannerOpen] = useState(false);
 
       useEffect(() => {
         if (editingStock) {
           setName(editingStock.name || '');
           setCategory(editingStock.category || 'ชา/กาแฟ');
+          setBarcode(editingStock.barcode || '');
           setCurrent(editingStock.current !== undefined ? editingStock.current : '');
           setUnit(editingStock.unit || 'กรัม');
           setMinAlert(editingStock.minAlert !== undefined ? editingStock.minAlert : '500');
@@ -112,6 +193,7 @@
         } else {
           setName('');
           setCategory('ชา/กาแฟ');
+          setBarcode('');
           setCurrent('');
           setUnit('กรัม');
           setMinAlert('500');
@@ -139,6 +221,7 @@
           id: editingStock ? editingStock.id : undefined,
           name,
           category,
+          barcode,
           current: Number(current),
           unit,
           minAlert: Number(minAlert),
@@ -162,7 +245,17 @@
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อวัตถุดิบ <span className="text-rose-500">*</span></label>
-                <input type="text" placeholder="เช่น ผงชาไทยตรามือ / ยาชนิด A / ไซรัปส้ม" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                <input type="text" placeholder="เช่น ผงชาไทยตรามือ / ยาชนิด A / ไซรัปส้ม" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">รหัสบาร์โค้ด (Optional)</label>
+                <div className="flex space-x-2">
+                  <input type="text" placeholder="ยิงบาร์โค้ดที่นี่..." value={barcode} onChange={e => setBarcode(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl font-bold border border-emerald-200">
+                    <i data-lucide="scan" className="w-4 h-4"></i>
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -172,7 +265,7 @@
                     + เพิ่มหมวดหมู่ใหม่
                   </button>
                 </div>
-                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2.5 text-sm rounded-xl custom-input">
+                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-3 text-sm rounded-xl custom-input">
                   {categoriesList.map((cat, idx) => (
                     <option key={idx} value={cat}>{cat}</option>
                   ))}
@@ -180,18 +273,18 @@
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียก <span className="text-rose-500">*</span></label>
-                <input type="text" placeholder="เช่น กรัม, มล., ขวด" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                <label className="block text-xs font-semibold text-slate-600 mb-1">หน่วยเรียกหลัก <span className="text-rose-500">*</span></label>
+                <input type="text" placeholder="เช่น กรัม, มล., ขวด, กิโลกรัม" value={unit} onChange={e => setUnit(e.target.value)} required className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนปัจจุบัน <span className="text-rose-500">*</span></label>
-                  <input type="number" step="any" placeholder="0" value={current} onChange={e => setCurrent(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                  <input type="number" step="any" placeholder="0" value={current} onChange={e => setCurrent(e.target.value)} required className="w-full px-4 py-3 text-sm rounded-xl custom-input font-bold" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">จุดเตือนสั่งเพิ่ม (Min Alert)</label>
-                  <input type="number" step="any" placeholder="500" value={minAlert} onChange={e => setMinAlert(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                  <input type="number" step="any" placeholder="500" value={minAlert} onChange={e => setMinAlert(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
                 </div>
               </div>
 
@@ -214,6 +307,12 @@
               </div>
             </form>
           </div>
+
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={(code) => setBarcode(code)}
+          />
         </div>
       );
     }
@@ -318,18 +417,20 @@
     }
 
     // ==========================================
-    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal พร้อมช่องค้นหา)
+    // 3. MODAL: ย้ายไปหน้าร้าน (Transfer Modal)
     // ==========================================
     function TransferModal({ isOpen, onClose, stocks, onConfirmTransfer }) {
       const [stockId, setStockId] = useState('');
       const [searchQuery, setSearchQuery] = useState('');
       const [qty, setQty] = useState('');
       const [note, setNote] = useState('');
+      const [isScannerOpen, setIsScannerOpen] = useState(false);
 
       const filteredStocksForTransfer = useMemo(() => {
         return stocks.filter(s => 
           s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
+          (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (s.barcode && s.barcode.includes(searchQuery))
         );
       }, [stocks, searchQuery]);
 
@@ -355,6 +456,15 @@
         onConfirmTransfer(stockId, Number(qty), note);
       };
 
+      const handleScanBarcode = (scannedCode) => {
+        const found = stocks.find(s => s.barcode === scannedCode);
+        if (found) {
+          setStockId(found.id);
+        } else {
+          alert('ไม่พบวัตถุดิบที่มีบาร์โค้ดนี้');
+        }
+      };
+
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
@@ -370,17 +480,22 @@
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาวัตถุดิบเพื่อย้ายออก</label>
-                <input
-                  type="text"
-                  placeholder="พิมพ์ชื่อวัตถุดิบเพื่อกรอง..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 text-xs rounded-xl custom-input mb-2"
-                />
+                <label className="block text-xs font-semibold text-slate-600 mb-1">🔍 ค้นหาหรือสแกนบาร์โค้ด</label>
+                <div className="flex space-x-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="พิมพ์ชื่อวัตถุดิบ..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 text-xs rounded-xl custom-input"
+                  />
+                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-amber-50 text-amber-600 px-3 py-2 rounded-xl border border-amber-200 font-bold">
+                    <i data-lucide="scan" className="w-4 h-4"></i>
+                  </button>
+                </div>
 
                 <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบ / ยา / ไซรัป <span className="text-rose-500">*</span></label>
-                <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-2.5 text-sm rounded-xl custom-input font-medium">
+                <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input font-medium">
                   {filteredStocksForTransfer.map(s => (
                     <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
                   ))}
@@ -400,7 +515,7 @@
                     value={qty}
                     onChange={e => setQty(e.target.value)}
                     required
-                    className="w-full px-4 py-2.5 text-sm rounded-xl custom-input font-bold text-center text-amber-700"
+                    className="w-full px-4 py-3 text-sm rounded-xl custom-input font-bold text-center text-amber-700"
                   />
                   <span className="text-xs font-bold text-slate-500 min-w-[40px]">{selectedStock ? selectedStock.unit : ''}</span>
                 </div>
@@ -423,6 +538,12 @@
               </div>
             </form>
           </div>
+
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={handleScanBarcode}
+          />
         </div>
       );
     }
@@ -475,10 +596,10 @@
             <div id="printable-report" className="overflow-y-auto pr-1">
               <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
                 <div>
-                  <h1 className="text-2xl font-black text-slate-900">📄 สรุปรายงานการผลิต & สต๊อกประจำวัน</h1>
-                  <p className="text-xs font-semibold text-slate-500 mt-1">ประจำวันที่: {todayStr}</p>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900">📄 สรุปรายงานประจำวัน</h1>
+                  <p className="text-xs font-semibold text-slate-500 mt-1">วันที่: {todayStr}</p>
                 </div>
-                <div className="text-right text-xs text-slate-400">
+                <div className="text-right text-[11px] text-slate-400">
                   Beverage Stock Pro
                 </div>
               </div>
@@ -489,14 +610,14 @@
                     🍵 สรุปการต้มน้ำชาประจำวัน
                   </h3>
                   <span className="text-xs font-extrabold bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full">
-                    รวมทั้งหมด {totalPots} หม้อ
+                    รวม {totalPots} หม้อ
                   </span>
                 </div>
 
                 {Object.keys(recipeSummary).length === 0 ? (
                   <div className="text-xs text-slate-400 italic">ยังไม่มีบันทึกการต้มชาในวันนี้</div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     {Object.entries(recipeSummary).map(([name, count]) => (
                       <div key={name} className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
                         <span className="font-semibold text-slate-700">{name}</span>
@@ -540,7 +661,7 @@
                     {transferLogs.map(l => (
                       <div key={l.id} className="bg-white p-2.5 rounded-xl border border-amber-200 flex justify-between items-center">
                         <span className="font-semibold text-slate-800">{l.title}</span>
-                        <span className="text-slate-500">{l.datetime}</span>
+                        <span className="text-slate-500 text-[10px] sm:text-xs">{l.datetime}</span>
                       </div>
                     ))}
                   </div>
@@ -554,7 +675,7 @@
                 ปิดหน้าต่าง
               </button>
               <button type="button" onClick={handlePrint} className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-lg shadow-slate-900/20 transition flex items-center justify-center gap-2">
-                <i data-lucide="printer" className="w-4 h-4"></i> สั่งพิมพ์ / เซฟ PDF
+                <i data-lucide="printer" className="w-4 h-4"></i> พิมพ์ / PDF
               </button>
             </div>
           </div>
@@ -589,7 +710,8 @@
 
       const handleAddIngredient = () => {
         if (stocks.length === 0) return alert('กรุณาเพิ่มวัตถุดิบในคลังก่อนสร้างสูตร');
-        setIngredients(prev => [...prev, { stockId: stocks[0].id, amount: '' }]);
+        const defaultStock = stocks[0];
+        setIngredients(prev => [...prev, { stockId: defaultStock.id, amount: '', unit: defaultStock.unit || 'กรัม' }]);
       };
 
       const handleRemoveIngredient = (index) => {
@@ -599,7 +721,16 @@
       const handleIngredientChange = (index, field, value) => {
         setIngredients(prev => {
           const updated = [...prev];
-          updated[index] = { ...updated[index], [field]: value };
+          if (field === 'stockId') {
+            const selectedStock = stocks.find(s => s.id === value);
+            updated[index] = { 
+              ...updated[index], 
+              stockId: value, 
+              unit: selectedStock ? selectedStock.unit : 'กรัม' 
+            };
+          } else {
+            updated[index] = { ...updated[index], [field]: value };
+          }
           return updated;
         });
       };
@@ -620,7 +751,11 @@
           name,
           yieldInfo,
           image,
-          ingredients: ingredients.map(i => ({ stockId: i.stockId, amount: Number(i.amount) }))
+          ingredients: ingredients.map(i => ({ 
+            stockId: i.stockId, 
+            amount: Number(i.amount),
+            unit: i.unit || 'กรัม'
+          }))
         });
       };
 
@@ -641,7 +776,7 @@
               <form id="recipeForm" onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อสูตร / เครื่องดื่ม <span className="text-rose-500">*</span></label>
-                  <input type="text" placeholder="เช่น ชาไทยสูตรต้ม 5 ลิตร" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-2.5 text-sm rounded-xl custom-input" />
+                  <input type="text" placeholder="เช่น ชาไทยสูตรต้ม 5 ลิตร" value={name} onChange={e => setName(e.target.value)} required className="w-full px-4 py-3 text-sm rounded-xl custom-input" />
                 </div>
 
                 <div>
@@ -659,7 +794,7 @@
 
                 <div className="pt-2 border-t border-slate-100">
                   <div className="flex justify-between items-center mb-3">
-                    <label className="text-xs font-bold text-slate-700">รายการวัตถุดิบส่วนผสม (ต่อ 1 หม้อ) <span className="text-rose-500">*</span></label>
+                    <label className="text-xs font-bold text-slate-700">รายการส่วนผสม (ต่อ 1 หม้อ) <span className="text-rose-500">*</span></label>
                     <button type="button" onClick={handleAddIngredient} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
                       <i data-lucide="plus" className="w-3.5 h-3.5"></i> เพิ่มวัตถุดิบ
                     </button>
@@ -672,29 +807,34 @@
                   ) : (
                     <div className="space-y-3">
                       {ingredients.map((ing, idx) => {
-                        const selectedStock = stocks.find(s => s.id === ing.stockId);
                         return (
                           <div key={idx} className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                             <select
                               value={ing.stockId}
                               onChange={(e) => handleIngredientChange(idx, 'stockId', e.target.value)}
-                              className="flex-1 px-3 py-2 text-xs rounded-lg custom-input"
+                              className="flex-1 px-2.5 py-2 text-xs rounded-lg custom-input font-medium"
                             >
                               {stocks.map(s => (
-                                <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>
+                                <option key={s.id} value={s.id}>{s.name}</option>
                               ))}
                             </select>
 
                             <input
                               type="number"
                               step="any"
-                              placeholder="จำนวนที่ใช้"
+                              placeholder="จำนวน"
                               value={ing.amount}
                               onChange={(e) => handleIngredientChange(idx, 'amount', e.target.value)}
-                              className="w-28 px-3 py-2 text-xs rounded-lg custom-input font-bold text-center"
+                              className="w-20 px-2 py-2 text-xs rounded-lg custom-input font-bold text-center"
                             />
 
-                            <span className="text-xs text-slate-500 min-w-[30px] font-medium">{selectedStock ? selectedStock.unit : ''}</span>
+                            <input
+                              type="text"
+                              placeholder="หน่วย"
+                              value={ing.unit || ''}
+                              onChange={(e) => handleIngredientChange(idx, 'unit', e.target.value)}
+                              className="w-16 px-2 py-2 text-xs rounded-lg custom-input text-center"
+                            />
 
                             <button type="button" onClick={() => handleRemoveIngredient(idx)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
                               <i data-lucide="trash-2" className="w-4 h-4"></i>
@@ -792,7 +932,8 @@
       const filteredStocks = useMemo(() => {
         return stocks.filter(s => 
           s.name.toLowerCase().includes(searchStock.toLowerCase()) || 
-          (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase()))
+          (s.category && s.category.toLowerCase().includes(searchStock.toLowerCase())) ||
+          (s.barcode && s.barcode.includes(searchStock))
         );
       }, [stocks, searchStock]);
 
@@ -865,7 +1006,12 @@
           selectedProductionList.forEach(item => {
             if (item.recipe && item.recipe.ingredients) {
               item.recipe.ingredients.forEach(ing => {
-                deductionsSummary[ing.stockId] = (deductionsSummary[ing.stockId] || 0) + (Number(ing.amount) * item.qty);
+                const stockItem = stocks.find(s => s.id === ing.stockId);
+                if (stockItem) {
+                  const rawAmount = Number(ing.amount) * item.qty;
+                  const convertedAmount = convertUnitToStock(rawAmount, ing.unit, stockItem.unit);
+                  deductionsSummary[ing.stockId] = (deductionsSummary[ing.stockId] || 0) + convertedAmount;
+                }
               });
             }
           });
@@ -881,7 +1027,7 @@
           
           const detailsList = Object.entries(deductionsSummary).map(([stockId, deductAmount]) => {
             const stockItem = stocks.find(s => s.id === stockId);
-            return `${stockItem ? stockItem.name : 'วัตถุดิบ'}: -${deductAmount} ${stockItem ? stockItem.unit : ''}`;
+            return `${stockItem ? stockItem.name : 'วัตถุดิบ'}: -${deductAmount.toFixed(2)} ${stockItem ? stockItem.unit : ''}`;
           });
 
           const now = new Date();
@@ -1071,39 +1217,39 @@
             {/* Header & Navbar */}
             <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
               <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between border-b border-slate-100 sm:border-none">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2.5">
                   <div className="bg-emerald-500 text-white p-2 rounded-xl shadow-md shadow-emerald-500/20">
-                    <i data-lucide="cup-soda" className="w-6 h-6"></i>
+                    <i data-lucide="cup-soda" className="w-5 h-5 sm:w-6 sm:h-6"></i>
                   </div>
                   <div>
-                    <h1 className="font-bold text-slate-800 text-lg tracking-tight leading-none">Beverage Stock Pro</h1>
-                    <p className="text-[10px] text-slate-400 font-medium">ระบบจัดการวัตถุดิบการผลิต</p>
+                    <h1 className="font-bold text-slate-800 text-base sm:text-lg tracking-tight leading-none">ร้านติดใจ</h1>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">ระบบจัดการวัตถุดิบ & สต๊อก</p>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5 sm:space-x-2">
                   <button onClick={() => setPrintModalOpen(true)} className="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md transition">
-                    <i data-lucide="printer" className="w-4 h-4"></i>
+                    <i data-lucide="printer" className="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
                     <span className="hidden sm:inline">สรุปรายงานประจำวัน</span>
                   </button>
 
                   {lowStockItems.length > 0 && (
-                    <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 animate-pulse">
+                    <button onClick={() => setActiveTab('stock')} className="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 animate-pulse">
                       <i data-lucide="bell" className="w-3.5 h-3.5"></i>
-                      <span>เตือน ({lowStockItems.length})</span>
+                      <span>({lowStockItems.length})</span>
                     </button>
                   )}
                 </div>
               </div>
 
               <div className="bg-slate-100/80 p-1.5 border-t border-slate-200/60">
-                <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto no-scrollbar justify-start sm:justify-center">
-                  <button onClick={() => setActiveTab('production')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto no-scrollbar justify-start sm:justify-center px-2">
+                  <button onClick={() => setActiveTab('production')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'production' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="flame" className="w-4 h-4"></i>
                     <span>บันทึกการผลิต</span>
                   </button>
 
-                  <button onClick={() => setActiveTab('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => setActiveTab('stock')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${activeTab === 'stock' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="boxes" className="w-4 h-4"></i>
                     <span>คลังวัตถุดิบ</span>
                     {lowStockItems.length > 0 && (
@@ -1111,12 +1257,12 @@
                     )}
                   </button>
 
-                  <button onClick={() => setActiveTab('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => setActiveTab('bom')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'bom' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="book-open" className="w-4 h-4"></i>
                     <span>สูตรการผลิต (BOM)</span>
                   </button>
 
-                  <button onClick={() => setActiveTab('history')} className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <button onClick={() => setActiveTab('history')} className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
                     <i data-lucide="history" className="w-4 h-4"></i>
                     <span>ประวัติย้อนหลัง</span>
                   </button>
@@ -1125,7 +1271,7 @@
             </header>
 
             {/* Main Content Body */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-6">
+            <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 my-4 sm:my-6">
 
               {loading ? (
                 <div className="text-center py-20 text-slate-400 font-medium text-sm">กำลังโหลดข้อมูลระบบ...</div>
@@ -1135,9 +1281,9 @@
                   {activeTab === 'production' && (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                       
-                      <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
-                        <div className="mb-6">
-                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <div className="lg:col-span-7 bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
+                        <div className="mb-4 sm:mb-6">
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📝</span> บันทึกต้มน้ำชาประจำวัน
                           </h2>
                           <p className="text-xs text-slate-400 mt-1">กดเพิ่ม/ลดจำนวนหม้อต้มที่การ์ดเมนู เพื่อสรุปรายการต้มอัตโนมัติ</p>
@@ -1149,45 +1295,45 @@
                             placeholder="ค้นหาชื่อสูตร / เมนูต้มชา..."
                             value={searchProduction}
                             onChange={(e) => setSearchProduction(e.target.value)}
-                            className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl custom-input pl-10"
+                            className="w-full px-4 py-3 text-xs sm:text-sm rounded-xl custom-input pl-10"
                           />
-                          <span className="absolute left-3.5 top-3 text-slate-400 text-xs">🔍</span>
+                          <span className="absolute left-3.5 top-3.5 text-slate-400 text-xs">🔍</span>
                           {searchProduction && (
-                            <button onClick={() => setSearchProduction('')} className="absolute right-3 top-2.5 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
+                            <button onClick={() => setSearchProduction('')} className="absolute right-3 top-3 text-slate-400 text-xs hover:text-slate-600 font-bold">✕</button>
                           )}
                         </div>
 
                         {filteredProductionRecipes.length === 0 ? (
                           <div className="text-center py-12 text-slate-400 text-sm">ไม่พบสูตรเครื่องดื่มที่ตรงกับการค้นหา</div>
                         ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
                             {filteredProductionRecipes.map(recipe => {
                               const qty = batchQuantities[recipe.id] || 0;
                               const isSelected = qty > 0;
                               return (
-                                <div key={recipe.id} className={`border-2 rounded-2xl p-4 transition-all duration-200 relative flex flex-col justify-between ${isSelected ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                <div key={recipe.id} className={`border-2 rounded-2xl p-3.5 sm:p-4 transition-all duration-200 relative flex flex-col justify-between ${isSelected ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                                   
                                   {isSelected && (
                                     <div className="absolute top-3 right-3 bg-emerald-500 text-white rounded-full p-0.5">
-                                      <i data-lucide="check" className="w-4 h-4"></i>
+                                      <i data-lucide="check" className="w-3.5 h-3.5"></i>
                                     </div>
                                   )}
 
-                                  <div className="flex items-center space-x-3 mb-4">
-                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-sm" alt={recipe.name} />
+                                  <div className="flex items-center space-x-3 mb-3">
+                                    <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-sm" alt={recipe.name} />
                                     <div>
-                                      <h3 className="font-bold text-slate-800 text-base">{recipe.name}</h3>
-                                      <p className="text-xs text-slate-400">{recipe.yieldInfo}</p>
+                                      <h3 className="font-bold text-slate-800 text-sm sm:text-base">{recipe.name}</h3>
+                                      <p className="text-[11px] text-slate-400">{recipe.yieldInfo}</p>
                                     </div>
                                   </div>
 
-                                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-1.5 flex items-center justify-between">
+                                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-1 flex items-center justify-between">
                                     <button onClick={() => handleQuantityChange(recipe.id, -1)} className="w-10 h-10 rounded-lg bg-white border border-slate-300 font-bold text-lg text-slate-700 hover:bg-slate-100 active:scale-95 transition flex items-center justify-center shadow-sm">
                                       -
                                     </button>
                                     <div className="text-center">
-                                      <span className="font-bold text-lg text-slate-800">{qty}</span>
-                                      <span className="text-[10px] text-slate-400 block -mt-1 font-medium">หม้อ / ถัง</span>
+                                      <span className="font-bold text-base sm:text-lg text-slate-800">{qty}</span>
+                                      <span className="text-[9px] text-slate-400 block -mt-1 font-medium">หม้อ / ถัง</span>
                                     </div>
                                     <button onClick={() => handleQuantityChange(recipe.id, 1)} className="w-10 h-10 rounded-lg bg-emerald-500 font-bold text-lg text-white hover:bg-emerald-600 active:scale-95 transition flex items-center justify-center shadow-md shadow-emerald-500/20">
                                       +
@@ -1206,39 +1352,39 @@
                       </div>
 
                       <div className="lg:col-span-5">
-                        <div className="bg-[#0b1329] text-white rounded-3xl p-6 sm:p-8 shadow-2xl sticky top-28 border border-slate-800">
-                          <div className="flex items-center gap-3 pb-4 border-b border-slate-800/80 mb-6">
+                        <div className="bg-[#0b1329] text-white rounded-3xl p-5 sm:p-8 shadow-2xl sticky top-28 border border-slate-800">
+                          <div className="flex items-center gap-3 pb-4 border-b border-slate-800/80 mb-4 sm:mb-6">
                             <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400">
-                              <i data-lucide="clipboard-list" className="w-6 h-6"></i>
+                              <i data-lucide="clipboard-list" className="w-5 h-5 sm:w-6 sm:h-6"></i>
                             </div>
                             <div>
-                              <h2 className="font-bold text-lg text-white">สรุปรายการผลิตประจำวัน</h2>
-                              <p className="text-xs text-slate-400">สรุปรายการต้มชาที่เลือกต้มในรอบนี้</p>
+                              <h2 className="font-bold text-base sm:text-lg text-white">สรุปรายการผลิตประจำวัน</h2>
+                              <p className="text-[11px] text-slate-400">รายการต้มชาที่เลือกต้มในรอบนี้</p>
                             </div>
                           </div>
 
-                          <div className="space-y-3 min-h-[160px] max-h-[360px] overflow-y-auto pr-1">
+                          <div className="space-y-2.5 min-h-[140px] max-h-[300px] overflow-y-auto pr-1">
                             {selectedProductionList.length === 0 ? (
-                              <div className="text-center py-12 text-slate-500 text-sm font-medium">ยังไม่มีรายการที่เลือก<br/><span className="text-xs text-slate-600">กดปุ่ม + ด้านซ้ายเพื่อเลือกรายการต้ม</span></div>
+                              <div className="text-center py-10 text-slate-500 text-xs sm:text-sm font-medium">ยังไม่มีรายการที่เลือก<br/><span className="text-[10px] text-slate-600">กดปุ่ม + ด้านซ้ายเพื่อเลือกรายการต้ม</span></div>
                             ) : (
                               selectedProductionList.map(item => (
-                                <div key={item.recipeId} className="bg-[#131c38] border border-slate-800/80 rounded-2xl p-4 flex justify-between items-center">
-                                  <div className="flex items-center space-x-3">
-                                    <img src={item.recipe?.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-700" alt={item.name} />
+                                <div key={item.recipeId} className="bg-[#131c38] border border-slate-800/80 rounded-2xl p-3 flex justify-between items-center">
+                                  <div className="flex items-center space-x-2.5">
+                                    <img src={item.recipe?.image || DEFAULT_IMAGE} className="w-10 h-10 rounded-xl object-cover border border-slate-700" alt={item.name} />
                                     <div>
-                                      <div className="font-bold text-sm text-white">{item.name}</div>
-                                      <div className="text-xs text-slate-400">{item.yieldInfo}</div>
+                                      <div className="font-bold text-xs sm:text-sm text-white">{item.name}</div>
+                                      <div className="text-[10px] text-slate-400">{item.yieldInfo}</div>
                                     </div>
                                   </div>
                                   <div className="text-right">
-                                    <div className="text-emerald-400 font-extrabold text-lg">{item.qty} หม้อ</div>
+                                    <div className="text-emerald-400 font-extrabold text-base sm:text-lg">{item.qty} หม้อ</div>
                                   </div>
                                 </div>
                               ))
                             )}
                           </div>
 
-                          <button onClick={handleConfirmProduction} disabled={selectedProductionList.length === 0} className={`w-full mt-6 py-4 rounded-2xl font-bold text-base transition-all duration-200 flex items-center justify-center gap-2 ${selectedProductionList.length > 0 ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 active:scale-98' : 'bg-slate-800/60 text-slate-500 cursor-not-allowed'}`}>
+                          <button onClick={handleConfirmProduction} disabled={selectedProductionList.length === 0} className={`w-full mt-5 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 ${selectedProductionList.length > 0 ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 active:scale-98' : 'bg-slate-800/60 text-slate-500 cursor-not-allowed'}`}>
                             <i data-lucide="check-circle" className="w-5 h-5"></i>
                             ยืนยันการต้ม & ตัดสต๊อกทันที
                           </button>
@@ -1250,28 +1396,28 @@
 
                   {/* ================= TAB 2: คลังวัตถุดิบ ================= */}
                   {activeTab === 'stock' && (
-                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
+                    <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
                       
                       {lowStockItems.length > 0 && (
-                        <div className="mb-8 bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 text-rose-900 shadow-sm">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-2 font-bold text-base text-rose-700">
+                        <div className="mb-6 sm:mb-8 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 sm:p-5 text-rose-900 shadow-sm">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center space-x-2 font-bold text-sm sm:text-base text-rose-700">
                               <i data-lucide="alert-triangle" className="w-5 h-5 text-rose-600 animate-bounce"></i>
                               <span>เตือนการสั่งซื้อ: วัตถุดิบใกล้หมดคลัง ({lowStockItems.length} รายการ)</span>
                             </div>
-                            <button onClick={() => setRestockModalOpen(true)} className="bg-rose-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl hover:bg-rose-700 transition shadow-md">
+                            <button onClick={() => setRestockModalOpen(true)} className="bg-rose-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl hover:bg-rose-700 transition shadow-md w-full sm:w-auto text-center">
                               📥 เติมสต๊อกทันที
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                             {lowStockItems.map(item => (
-                              <div key={item.id} className="bg-white p-3 rounded-xl border border-rose-200 flex items-center justify-between">
+                              <div key={item.id} className="bg-white p-2.5 rounded-xl border border-rose-200 flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                   <img src={item.image || DEFAULT_IMAGE} className="w-8 h-8 rounded-md object-cover" alt={item.name} />
-                                  <span className="font-bold text-sm text-slate-800">{item.name}</span>
+                                  <span className="font-bold text-xs sm:text-sm text-slate-800">{item.name}</span>
                                 </div>
-                                <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-lg">
-                                  เหลือ {item.current} {item.unit} (สั่งเพิ่มด่วน)
+                                <span className="text-[11px] font-bold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-lg">
+                                  เหลือ {item.current} {item.unit}
                                 </span>
                               </div>
                             ))}
@@ -1279,33 +1425,33 @@
                         </div>
                       )}
 
-                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
                         <div>
-                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📦</span> คลังวัตถุดิบคงเหลือ (Real-time Stock)
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
+                          <p className="text-xs text-slate-400 mt-0.5">จัดการข้อมูลสต๊อก เติมสต๊อก หรือย้ายไปหน้าร้าน</p>
                         </div>
                         
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                          <button onClick={() => setTransferModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5">
-                            <i data-lucide="share" className="w-4 h-4"></i> 📤 ย้ายไปหน้าร้าน
+                        <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+                          <button onClick={() => setTransferModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-amber-500/20 flex items-center justify-center gap-1">
+                            <i data-lucide="share" className="w-3.5 h-3.5"></i> ย้ายออก
                           </button>
 
-                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-1.5">
-                            <i data-lucide="plus-circle" className="w-4 h-4"></i> 📥 เติมสต๊อก
+                          <button onClick={() => setRestockModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1">
+                            <i data-lucide="plus-circle" className="w-3.5 h-3.5"></i> เติมสต๊อก
                           </button>
                           
-                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-1.5">
-                            <i data-lucide="plus" className="w-4 h-4"></i> เพิ่มวัตถุดิบใหม่
+                          <button onClick={() => { setEditingStock(null); setStockModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition shadow-md shadow-slate-800/20 flex items-center justify-center gap-1">
+                            <i data-lucide="plus" className="w-3.5 h-3.5"></i> เพิ่มใหม่
                           </button>
                         </div>
                       </div>
 
-                      <div className="mb-6 relative">
+                      <div className="mb-5 relative">
                         <input
                           type="text"
-                          placeholder="ค้นหาวัตถุดิบในคลัง หรือหมวดหมู่..."
+                          placeholder="ค้นหาวัตถุดิบ หรือสแกนบาร์โค้ด..."
                           value={searchStock}
                           onChange={(e) => setSearchStock(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1319,21 +1465,22 @@
                       {filteredStocks.length === 0 ? (
                         <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบวัตถุดิบที่ตรงกับการค้นหา</div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                           {filteredStocks.map(item => {
                             const currentVal = Number(item.current) || 0;
                             const minVal = Number(item.minAlert) || 0;
                             const isLow = currentVal <= minVal;
 
                             return (
-                              <div key={item.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                              <div key={item.id} className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
                                 <div>
                                   <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center space-x-3">
                                       <img src={item.image || DEFAULT_IMAGE} className="w-12 h-12 rounded-xl object-cover border border-slate-200" alt={item.name} />
                                       <div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
-                                        <h3 className="font-bold text-base text-slate-800 mt-0.5">{item.name}</h3>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{item.category || 'ทั่วไป'}</span>
+                                        <h3 className="font-bold text-sm sm:text-base text-slate-800 mt-0.5">{item.name}</h3>
+                                        {item.barcode && <p className="text-[10px] text-slate-400">Barcode: {item.barcode}</p>}
                                       </div>
                                     </div>
                                     <div className="flex space-x-1">
@@ -1346,21 +1493,21 @@
                                     </div>
                                   </div>
 
-                                  <div className="my-4">
+                                  <div className="my-3">
                                     <div className="flex justify-between items-baseline mb-1">
                                       <span className="text-xs text-slate-400 font-medium">คงเหลือปัจจุบัน</span>
-                                      <span className={`text-2xl font-extrabold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                      <span className={`text-xl sm:text-2xl font-extrabold ${isLow ? 'text-rose-600' : 'text-slate-800'}`}>
                                         {currentVal} <span className="text-xs font-normal text-slate-500">{item.unit}</span>
                                       </span>
                                     </div>
-                                    <div className="text-right text-[11px] text-slate-400">
+                                    <div className="text-right text-[10px] sm:text-[11px] text-slate-400">
                                       จุดเตือนสั่งซื้อ: {minVal} {item.unit}
                                     </div>
                                   </div>
                                 </div>
 
-                                <div className="pt-3 border-t border-slate-100 flex justify-end items-center text-xs text-slate-500">
-                                  {isLow && <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded">ใกล้หมด</span>}
+                                <div className="pt-2 border-t border-slate-100 flex justify-end items-center text-xs text-slate-500">
+                                  {isLow && <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded text-[11px]">ใกล้หมด</span>}
                                 </div>
                               </div>
                             );
@@ -1373,20 +1520,20 @@
 
                   {/* ================= TAB 3: สูตรการผลิต (BOM) ================= */}
                   {activeTab === 'bom' && (
-                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
-                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                    <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
                         <div>
-                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📖</span> จัดการสูตรการผลิต (Bill of Materials)
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">กำหนดสัดส่วนวัตถุดิบที่ใช้ต้มในแต่ละสูตร</p>
+                          <p className="text-xs text-slate-400 mt-0.5">กำหนดสัดส่วนวัตถุดิบที่ใช้ต้มในแต่ละสูตร</p>
                         </div>
-                        <button onClick={() => { setEditingRecipe(null); setRecipeModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm px-5 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2">
-                          <i data-lucide="plus" className="w-5 h-5"></i> เพิ่มสูตรใหม่
+                        <button onClick={() => { setEditingRecipe(null); setRecipeModalOpen(true); }} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl transition shadow-lg shadow-slate-800/20 flex items-center justify-center gap-2">
+                          <i data-lucide="plus" className="w-4 h-4"></i> เพิ่มสูตรใหม่
                         </button>
                       </div>
 
-                      <div className="mb-6 relative">
+                      <div className="mb-5 relative">
                         <input
                           type="text"
                           placeholder="ค้นหาชื่อสูตร..."
@@ -1403,14 +1550,14 @@
                       {filteredRecipes.length === 0 ? (
                         <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบสูตรการผลิตที่ตรงกับการค้นหา</div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                           {filteredRecipes.map(recipe => (
-                            <div key={recipe.id} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition">
+                            <div key={recipe.id} className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white shadow-sm hover:shadow-md transition">
                               <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center space-x-3">
-                                  <img src={recipe.image || DEFAULT_IMAGE} className="w-14 h-14 rounded-xl object-cover border border-slate-200" alt={recipe.name} />
+                                  <img src={recipe.image || DEFAULT_IMAGE} className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-200" alt={recipe.name} />
                                   <div>
-                                    <h3 className="font-bold text-base text-slate-800">{recipe.name}</h3>
+                                    <h3 className="font-bold text-sm sm:text-base text-slate-800">{recipe.name}</h3>
                                     <span className="text-xs text-slate-400">{recipe.yieldInfo || '1 หม้อ/ถัง'}</span>
                                   </div>
                                 </div>
@@ -1425,14 +1572,14 @@
                               </div>
 
                               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">ส่วนผสมต่อ 1 หม้อ:</span>
+                                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">ส่วนผสมต่อ 1 หม้อ:</span>
                                 <ul className="space-y-1.5 text-xs text-slate-700">
                                   {recipe.ingredients && recipe.ingredients.map((ing, idx) => {
                                     const stockItem = stocks.find(s => s.id === ing.stockId);
                                     return (
                                       <li key={idx} className="flex justify-between items-center">
                                         <span>• {stockItem ? stockItem.name : 'วัตถุดิบระบุไม่ได้'}</span>
-                                        <span className="font-semibold text-slate-900">{ing.amount} {stockItem ? stockItem.unit : ''}</span>
+                                        <span className="font-semibold text-slate-900">{ing.amount} {ing.unit || (stockItem ? stockItem.unit : '')}</span>
                                       </li>
                                     );
                                   })}
@@ -1448,25 +1595,25 @@
 
                   {/* ================= TAB 4: ประวัติย้อนหลัง ================= */}
                   {activeTab === 'history' && (
-                    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 custom-shadow">
-                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                    <div className="bg-white rounded-3xl p-4 sm:p-8 border border-slate-200/80 custom-shadow">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 pb-5 border-b border-slate-100">
                         <div>
-                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📜</span> ประวัติการทำรายการย้อนหลัง
                           </h2>
-                          <p className="text-xs text-slate-400 mt-1">ประวัติการต้มชา การเติมวัตถุดิบ และการย้ายออกหน้าร้านทั้งหมด</p>
+                          <p className="text-xs text-slate-400 mt-0.5">ประวัติการต้มชา การเติมวัตถุดิบ และการย้ายออกหน้าร้านทั้งหมด</p>
                         </div>
                         {logs.length > 0 && (
-                          <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                          <button onClick={handleClearLogs} className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs px-3.5 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
                             <i data-lucide="trash" className="w-4 h-4"></i> ล้างประวัติทั้งหมด
                           </button>
                         )}
                       </div>
 
-                      <div className="mb-6 relative">
+                      <div className="mb-5 relative">
                         <input
                           type="text"
-                          placeholder="ค้นหาตามวันที่, ประเภท, ชื่อรายการ หรือหมายเหตุ..."
+                          placeholder="ค้นหาตามวันที่, ประเภท, ชื่อรายการ..."
                           value={searchHistory}
                           onChange={(e) => setSearchHistory(e.target.value)}
                           className="w-full px-4 py-3 text-xs sm:text-sm rounded-2xl custom-input pl-10"
@@ -1480,7 +1627,7 @@
                       {filteredLogs.length === 0 ? (
                         <div className="text-center py-16 text-slate-400 text-sm font-medium">ไม่พบประวัติการทำรายการ</div>
                       ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-3 sm:space-y-4">
                           {filteredLogs.map(log => {
                             const isProduction = log.type === 'ต้มผลิต';
                             const isTransfer = log.type === 'ย้ายไปหน้าร้าน';
@@ -1490,19 +1637,19 @@
                             if (isTransfer) badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
 
                             return (
-                              <div key={log.id} className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white hover:border-slate-300 transition shadow-sm">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
-                                  <div className="flex items-center space-x-2.5">
-                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${badgeStyle}`}>
+                              <div key={log.id} className="border border-slate-200 rounded-2xl p-3.5 sm:p-5 bg-white hover:border-slate-300 transition shadow-sm">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5 pb-2.5 border-b border-slate-100">
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-lg border ${badgeStyle}`}>
                                       {log.type || 'บันทึก'}
                                     </span>
-                                    <h3 className="font-bold text-sm text-slate-800">{log.title}</h3>
+                                    <h3 className="font-bold text-xs sm:text-sm text-slate-800">{log.title}</h3>
                                   </div>
-                                  <span className="text-xs text-slate-400 font-medium">{log.datetime}</span>
+                                  <span className="text-[10px] sm:text-xs text-slate-400 font-medium">{log.datetime}</span>
                                 </div>
 
                                 {log.details && log.details.length > 0 && (
-                                  <div className="mb-3 bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+                                  <div className="mb-2 bg-slate-50 rounded-xl p-2.5 text-[11px] sm:text-xs text-slate-600 space-y-1">
                                     {log.details.map((dt, i) => (
                                       <div key={i} className="flex items-center space-x-1.5">
                                         <span className="text-slate-400">•</span>
@@ -1513,7 +1660,7 @@
                                 )}
 
                                 {log.note && (
-                                  <div className="text-xs text-slate-400 italic">
+                                  <div className="text-[11px] sm:text-xs text-slate-400 italic">
                                     💬 หมายเหตุ: {log.note}
                                   </div>
                                 )}
@@ -1531,8 +1678,8 @@
             </main>
           </div>
 
-          <footer className="text-center py-6 text-xs text-slate-400 border-t border-slate-200/60 bg-white">
-            Beverage Stock Pro &copy; ระบบสต๊อกชา & เติมวัตถุดิบ
+          <footer className="text-center py-5 text-xs text-slate-400 border-t border-slate-200/60 bg-white">
+            ร้านติดใจ &copy; ระบบจัดการสต๊อกของ & เติมของ
           </footer>
 
           {/* Render Modals */}
