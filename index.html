@@ -379,7 +379,7 @@
                 </button>
               </div>
 
-              {/* หมวดหมู่ให้เลือกแบบหน้ารวมวัตถุดิบ */}
+              {/* หมวดหมู่ให้เลือก */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 mb-2 border-b border-slate-100">
                 <button
                   type="button"
@@ -467,127 +467,147 @@
     }
 
     // ==========================================
-    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Modal)
+    // 3. MODAL: เอาของออกไปหน้าร้าน (Transfer Batch Modal - ปรับปรุงเหมือนช่องเติมสต๊อก)
     // ==========================================
-    function TransferModal({ isOpen, onClose, stocks, categories, onConfirmTransfer }) {
-      const [selectedCategory, setSelectedCategory] = useState('');
-      const [stockId, setStockId] = useState('');
-      const [qty, setQty] = useState('');
-      const [issuer, setIssuer] = useState('');
+    function TransferModal({ isOpen, onClose, stocks, categories, onConfirmBatchTransfer }) {
+      const [transferQtyMap, setTransferQtyMap] = useState({});
+      const [note, setNote] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('all');
 
       useEffect(() => {
         if (isOpen) {
-          const defaultCat = categories.length > 0 ? categories[0].name : '';
-          setSelectedCategory(defaultCat);
-          setQty('');
-          setIssuer('');
+          const initialMap = {};
+          stocks.forEach(s => { initialMap[s.id] = ''; });
+          setTransferQtyMap(initialMap);
+          setNote('เอาของออกไปหน้าร้าน');
+          setSelectedCategory('all');
         }
-      }, [isOpen, categories]);
-
-      const filteredStocksForTransfer = useMemo(() => {
-        if (!selectedCategory) return stocks;
-        return stocks.filter(s => (s.category || 'ทั่วไป') === selectedCategory);
-      }, [stocks, selectedCategory]);
-
-      useEffect(() => {
-        if (filteredStocksForTransfer.length > 0) {
-          setStockId(filteredStocksForTransfer[0].id);
-        } else {
-          setStockId('');
-        }
-      }, [filteredStocksForTransfer]);
+      }, [isOpen, stocks]);
 
       if (!isOpen) return null;
 
-      const selectedStock = stocks.find(s => s.id === stockId);
+      const filteredStocks = stocks.filter(s => selectedCategory === 'all' || s.category === selectedCategory);
+
+      const handleQtyChange = (stockId, val) => {
+        setTransferQtyMap(prev => ({ ...prev, [stockId]: val }));
+      };
 
       const handleSubmit = (e) => {
         e.preventDefault();
-        if (!stockId || !qty || Number(qty) <= 0) return alert('กรุณาระบุวัตถุดิบและจำนวนที่ถูกต้อง');
-        if (selectedStock && Number(qty) > Number(selectedStock.current)) {
-          return alert(`ไม่สามารถย้ายได้ เนื่องจากจำนวนที่ย้ายมากกว่าสต๊อกคงเหลือที่มี (${selectedStock.current} ${selectedStock.unit})`);
-        }
-        
-        let fullNote = '';
-        if (issuer.trim()) {
-          fullNote = `ลงชื่อผู้เบิก/ผู้บันทึก: ${issuer.trim()}`;
-        } else {
-          fullNote = 'เอาของออกไปหน้าร้าน';
+
+        // ตรวจสอบความถูกต้องว่ามีวัตถุดิบที่ถูกเอาออกเกินสต๊อกคงเหลือหรือไม่
+        for (const stockId in transferQtyMap) {
+          const qty = Number(transferQtyMap[stockId]);
+          if (qty > 0) {
+            const stockItem = stocks.find(s => s.id === stockId);
+            if (stockItem && qty > Number(stockItem.current)) {
+              return alert(`รายการ "${stockItem.name}" เอาออกเกินจำนวนคงเหลือที่มีในคลัง (มีอยู่ ${stockItem.current} ${stockItem.unit})`);
+            }
+          }
         }
 
-        onConfirmTransfer(stockId, Number(qty), fullNote);
+        onConfirmBatchTransfer(transferQtyMap, note);
       };
 
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
-            <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                <i data-lucide="share" className="w-5 h-5 text-amber-600"></i>
-                📤 เอาของออกไปหน้าร้าน
-              </h3>
-              <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
-                <i data-lucide="x" className="w-5 h-5"></i>
-              </button>
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-3">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <i data-lucide="upload" className="w-5 h-5 text-amber-600"></i>
+                    📤 เอาของออกไปหน้าร้าน (Transfer Batch)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">ใส่จำนวนที่ต้องการเอาออกลงในช่องของแต่ละวัตถุดิบ</p>
+                </div>
+                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                  <i data-lucide="x" className="w-5 h-5"></i>
+                </button>
+              </div>
+
+              {/* หมวดหมู่ให้เลือก */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 mb-2 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    selectedCategory === 'all'
+                      ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  ทั้งหมด
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                      selectedCategory === cat.name
+                        ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+
+              <form id="transferForm" onSubmit={handleSubmit} className="space-y-4">
+                <div className="max-h-[45vh] overflow-y-auto pr-1 space-y-3">
+                  {filteredStocks.map(stock => {
+                    const isLow = Number(stock.current) <= Number(stock.minAlert || 0);
+                    return (
+                      <div key={stock.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${isLow ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="flex-1 min-w-0 flex items-center gap-3">
+                          <img src={stock.image || DEFAULT_IMAGE} className="w-10 h-10 rounded-lg object-cover border" alt={stock.name} />
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-sm text-slate-800 truncate">{stock.name}</span>
+                              {isLow && <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">ใกล้หมด</span>}
+                            </div>
+                            <span className="text-xs text-slate-400">ปัจจุบัน: <strong className="text-slate-700">{stock.current}</strong> {stock.unit}</span>
+                          </div>
+                        </div>
+                        <div className="w-36 flex items-center space-x-1.5">
+                          <span className="text-xs font-bold text-amber-600">-</span>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="0"
+                            value={transferQtyMap[stock.id] || ''}
+                            onChange={(e) => handleQtyChange(stock.id, e.target.value)}
+                            className="w-full px-3 py-2 text-sm text-center font-bold text-amber-700 bg-white rounded-xl border border-slate-300 focus:border-amber-500 focus:outline-none"
+                          />
+                          <span className="text-xs text-slate-400 whitespace-nowrap min-w-[30px]">{stock.unit}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredStocks.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 text-xs italic">ไม่พบวัตถุดิบในหมวดหมู่นี้</div>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุการเอาวัตถุดิบออก / ชื่อผู้เบิก</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น เบิกออกไปหน้าร้าน / สมชาย"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
+                  />
+                </div>
+              </form>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">📁 เลือกหมวดหมู่ <span className="text-rose-500">*</span></label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-4 py-2.5 text-xs rounded-xl custom-input mb-3 font-semibold text-slate-700"
-                >
-                  {categories.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                  {categories.length === 0 && <option value="ทั่วไป">ทั่วไป</option>}
-                </select>
-
-                <label className="block text-xs font-semibold text-slate-600 mb-1">เลือกวัตถุดิบในหมวดหมู่นี้ <span className="text-rose-500">*</span></label>
-                <select value={stockId} onChange={e => setStockId(e.target.value)} className="w-full px-4 py-3 text-sm rounded-xl custom-input font-medium">
-                  {filteredStocksForTransfer.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} (คงเหลือ: {s.current} {s.unit})</option>
-                  ))}
-                  {filteredStocksForTransfer.length === 0 && (
-                    <option value="" disabled>ไม่มีวัตถุดิบในหมวดหมู่นี้</option>
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่ต้องการเอาของออกไปหน้าร้าน <span className="text-rose-500">*</span></label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0"
-                    value={qty}
-                    onChange={e => setQty(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 text-sm rounded-xl custom-input font-bold text-center text-amber-700"
-                  />
-                  <span className="text-xs font-bold text-slate-500 min-w-[40px]">{selectedStock ? selectedStock.unit : ''}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ</label>
-                <input
-                  type="text"
-                  placeholder="เช่น สมชาย / พนักงาน A"
-                  value={issuer}
-                  onChange={e => setIssuer(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm rounded-xl custom-input"
-                />
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">ยืนยันเอาของออก</button>
-              </div>
-            </form>
+            <div className="pt-4 border-t border-slate-100 flex gap-3 mt-4">
+              <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition">ยกเลิก</button>
+              <button type="submit" form="transferForm" className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition">บันทึกการเอาของออก</button>
+            </div>
           </div>
         </div>
       );
@@ -1251,15 +1271,7 @@
 
           // หากผู้ใช้เลือกต้องการคืนค่าสต๊อก
           if (shouldRestore) {
-            // กรณีเป็นรายการเอาของออก
-            if (logToDelete.type === 'เอาของออกไปหน้าร้าน' && logToDelete.stockId && logToDelete.stockQty) {
-              const stockRef = db.collection('stocks').doc(logToDelete.stockId);
-              batch.update(stockRef, {
-                current: firebase.firestore.FieldValue.increment(Number(logToDelete.stockQty))
-              });
-            } 
-            // กรณีเป็นรายการปรุงผลิต
-            else if (logToDelete.rawDeductions) {
+            if (logToDelete.rawDeductions) {
               Object.entries(logToDelete.rawDeductions).forEach(([sId, amount]) => {
                 const stockRef = db.collection('stocks').doc(sId);
                 batch.update(stockRef, {
@@ -1355,17 +1367,27 @@
         }
       };
 
-      // --- Transfer Handler ---
-      const handleTransferToStorefront = async (stockId, qty, note) => {
+      // --- Transfer Batch Handler (ปรับปรุงระบบเอาของออกเป็น Batch) ---
+      const handleBatchTransfer = async (transferItemsMap, globalNote) => {
         try {
-          const stockItem = stocks.find(s => s.id === stockId);
-          if (!stockItem) return;
+          const itemsToProcess = Object.entries(transferItemsMap).filter(([_, qty]) => Number(qty) > 0);
+          if (itemsToProcess.length === 0) return alert('กรุณาระบุจำนวนวัตถุดิบที่ต้องการเอาออกอย่างน้อย 1 รายการ');
 
           const batch = db.batch();
-          const stockRef = db.collection('stocks').doc(stockId);
+          const detailsList = [];
+          const rawDeductions = {};
 
-          batch.update(stockRef, {
-            current: firebase.firestore.FieldValue.increment(-qty)
+          itemsToProcess.forEach(([stockId, qty]) => {
+            const stockItem = stocks.find(s => s.id === stockId);
+            const amount = Number(qty);
+            if (stockItem && amount > 0) {
+              const stockRef = db.collection('stocks').doc(stockId);
+              batch.update(stockRef, {
+                current: firebase.firestore.FieldValue.increment(-amount)
+              });
+              detailsList.push(`${stockItem.name}: -${amount} ${stockItem.unit}`);
+              rawDeductions[stockId] = amount;
+            }
           });
 
           const now = new Date();
@@ -1381,18 +1403,17 @@
             datetime: timeStr,
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             type: 'เอาของออกไปหน้าร้าน',
-            title: `เอาของ ${stockItem.name} (${qty} ${stockItem.unit}) ออกไปหน้าร้าน`,
-            details: [`${stockItem.name}: -${qty} ${stockItem.unit}`],
-            stockId: stockId, // บันทึกไว้เผื่อลบคืนค่า
-            stockQty: qty,
-            note: note || 'เอาของออกไปหน้าร้าน'
+            title: `เอาของออกไปหน้าร้าน (${itemsToProcess.length} รายการ)`,
+            details: detailsList,
+            rawDeductions: rawDeductions, // บันทึกไว้เผื่อคืนค่าสต๊อก
+            note: globalNote || 'เอาของออกไปหน้าร้าน'
           });
 
           await batch.commit();
           setTransferModalOpen(false);
-          alert(`เอาของ ${stockItem.name} ออกไปหน้าร้านเรียบร้อยแล้ว!`);
+          alert(`เอาของออกไปหน้าร้านเรียบร้อยแล้วทั้งหมด ${itemsToProcess.length} รายการ!`);
         } catch (err) {
-          console.error("Transfer error:", err);
+          console.error("Batch Transfer error:", err);
           alert("เกิดข้อผิดพลาดในการเอาของออกไปหน้าร้าน");
         }
       };
@@ -1986,7 +2007,7 @@
             onClose={() => setTransferModalOpen(false)}
             stocks={stocks}
             categories={categories}
-            onConfirmTransfer={handleTransferToStorefront}
+            onConfirmBatchTransfer={handleBatchTransfer}
           />
 
           <PrintSummaryModal
