@@ -74,10 +74,32 @@
     }
     .btn-dark-pill:hover { background-color: #0f172a; }
 
+    /* A4 Simulation Style */
+    .a4-container {
+      width: 100%;
+      max-width: 210mm;
+      min-height: 297mm;
+      background: white;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    }
+
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
       body * { visibility: hidden; }
       #printable-report, #printable-report * { visibility: visible; }
-      #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+      #printable-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        height: auto !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+      }
       .no-print { display: none !important; }
     }
   </style>
@@ -528,7 +550,7 @@
     }
 
     // ==========================================
-    // 4. MODAL: สรุปรายงานประจำวัน (ปรับปรุงใหม่ตามที่ขอ)
+    // 4. MODAL: สรุปรายงานประจำวัน (ปรับเป็นมุมมอง A4 ทั้งหมด)
     // ==========================================
     function PrintSummaryModal({ isOpen, onClose, logs, lowStockItems }) {
       if (!isOpen) return null;
@@ -568,97 +590,108 @@
       const handlePrint = () => { window.print(); };
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-8 shadow-2xl border border-slate-100 max-h-[92vh] flex flex-col justify-between">
-            <div id="printable-report" className="overflow-y-auto pr-1">
-              
-              <div className="border-b-2 border-slate-800 pb-3 mb-4 flex justify-between items-end">
-                <div>
-                  <h1 className="text-lg sm:text-2xl font-black text-slate-900">📄 สรุปรายงานประจำวัน</h1>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">วันที่: {todayStr}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/75 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="flex flex-col items-center w-full max-w-2xl my-auto">
+            
+            {/* กล่องกระดาษจำลอง A4 */}
+            <div id="printable-report" className="a4-container rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-slate-800 flex flex-col justify-between border border-slate-200">
+              <div>
+                {/* A4 Header */}
+                <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-end">
+                  <div>
+                    <h1 className="text-base sm:text-2xl font-black text-slate-900 tracking-tight">📄 รายงานสรุปประจำวัน (A4)</h1>
+                    <p className="text-[11px] sm:text-xs font-semibold text-slate-600 mt-0.5">ร้านติดใจ | วันที่: {todayStr}</p>
+                  </div>
+                  <div className="text-right text-[10px] sm:text-xs text-slate-400 font-mono">
+                    DAILY-REPORT
+                  </div>
                 </div>
-                <div className="text-right text-[11px] text-slate-400">
-                  ระบบสต๊อกร้านติดใจ
-                </div>
-              </div>
 
-              {/* 1. สรุปการปรุง/ผลิต */}
-              <div className="mb-5 bg-emerald-50/50 p-3.5 rounded-2xl border border-emerald-200">
-                <div className="flex justify-between items-center mb-2.5">
-                  <h3 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
-                    🪣 สรุปการปรุง/ต้มประจำวัน
+                {/* 1. สรุปการปรุง/ต้ม */}
+                <div className="mb-4 bg-emerald-50/60 p-3 sm:p-4 rounded-xl border border-emerald-200">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
+                      🪣 สรุปการปรุง/ต้มประจำวัน
+                    </h3>
+                    <span className="text-[10px] sm:text-xs font-extrabold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                      รวม {totalBuckets} ถัง
+                    </span>
+                  </div>
+
+                  {Object.keys(recipeSummary).length === 0 ? (
+                    <div className="text-[11px] text-slate-400 italic">ยังไม่มีบันทึกการปรุงในวันนี้</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] sm:text-xs">
+                      {Object.entries(recipeSummary).map(([name, count]) => (
+                        <div key={name} className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 flex justify-between items-center">
+                          <span className="font-medium text-slate-700 truncate">{name}</span>
+                          <span className="font-bold text-emerald-600 ml-1 whitespace-nowrap">{count} ถัง</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. เตือนวัตถุดิบใกล้หมด */}
+                <div className="mb-4 bg-rose-50/60 p-3 sm:p-4 rounded-xl border border-rose-200">
+                  <h3 className="font-bold text-rose-800 text-xs sm:text-sm mb-2 flex items-center gap-1.5">
+                    ⚠️ วัตถุดิบใกล้หมด / ต้องสั่งซื้อเพิ่ม ({lowStockItems.length} รายการ)
                   </h3>
-                  <span className="text-xs font-extrabold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
-                    รวม {totalBuckets} ถัง
-                  </span>
+
+                  {lowStockItems.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 italic">ไม่มีวัตถุดิบใกล้หมด สต๊อกอยู่ในเกณฑ์ปกติ</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] sm:text-xs">
+                      {lowStockItems.map(s => (
+                        <div key={s.id} className="bg-white px-2.5 py-1.5 rounded-lg border border-rose-200 flex justify-between items-center">
+                          <span className="font-medium text-slate-800 truncate">{s.name}</span>
+                          <span className="font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded ml-1 whitespace-nowrap">
+                            เหลือ {s.current} {s.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {Object.keys(recipeSummary).length === 0 ? (
-                  <div className="text-xs text-slate-400 italic">ยังไม่มีบันทึกการปรุงในวันนี้</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {Object.entries(recipeSummary).map(([name, count]) => (
-                      <div key={name} className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
-                        <span className="font-semibold text-slate-700">{name}</span>
-                        <span className="font-bold text-emerald-600">{count} ถัง</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* 3. สรุปการเอาของออกไปหน้าร้าน */}
+                <div className="mb-2 bg-amber-50/60 p-3 sm:p-4 rounded-xl border border-amber-200">
+                  <h3 className="font-bold text-amber-900 text-xs sm:text-sm mb-2 flex items-center gap-1.5">
+                    📤 สรุปการเอาของออกไปหน้าร้านวันนี้
+                  </h3>
+
+                  {transferLogs.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 italic">ไม่มีรายการเอาของออกไปหน้าร้านในวันนี้</div>
+                  ) : (
+                    <div className="space-y-1.5 text-[11px] sm:text-xs">
+                      {transferLogs.map(l => (
+                        <div key={l.id} className="bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 flex justify-between items-center">
+                          <span className="font-medium text-slate-800 truncate">{l.title}</span>
+                          <span className="text-slate-400 text-[9px] sm:text-[10px] ml-2 whitespace-nowrap">{l.datetime}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* 2. เตือนวัตถุดิบใกล้หมด */}
-              <div className="mb-5 bg-rose-50/60 p-3.5 rounded-2xl border border-rose-200">
-                <h3 className="font-bold text-rose-800 text-xs sm:text-sm mb-2.5 flex items-center gap-1.5">
-                  ⚠️ วัตถุดิบใกล้หมด / ต้องสั่งซื้อเพิ่ม ({lowStockItems.length} รายการ)
-                </h3>
-
-                {lowStockItems.length === 0 ? (
-                  <div className="text-xs text-slate-500 italic">ไม่มีวัตถุดิบใกล้หมด สต๊อกอยู่ในเกณฑ์ปกติ</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {lowStockItems.map(s => (
-                      <div key={s.id} className="bg-white p-2.5 rounded-xl border border-rose-200 flex justify-between items-center">
-                        <span className="font-semibold text-slate-800">{s.name}</span>
-                        <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                          เหลือ {s.current} {s.unit}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              {/* A4 Footer Signatures */}
+              <div className="pt-6 mt-6 border-t border-slate-200 grid grid-cols-2 text-center text-[10px] text-slate-400">
+                <div>ลงชื่อผู้รายงาน: ............................................</div>
+                <div>ลงชื่อผู้รับเรื่อง: ............................................</div>
               </div>
-
-              {/* 3. สรุปการเอาของออกไปหน้าร้าน */}
-              <div className="mb-2 bg-amber-50/60 p-3.5 rounded-2xl border border-amber-200">
-                <h3 className="font-bold text-amber-900 text-xs sm:text-sm mb-2.5 flex items-center gap-1.5">
-                  📤 สรุปการเอาของออกไปหน้าร้านวันนี้
-                </h3>
-
-                {transferLogs.length === 0 ? (
-                  <div className="text-xs text-slate-500 italic">ไม่มีรายการเอาของออกไปหน้าร้านในวันนี้</div>
-                ) : (
-                  <div className="space-y-2 text-xs">
-                    {transferLogs.map(l => (
-                      <div key={l.id} className="bg-white p-2.5 rounded-xl border border-amber-200 flex justify-between items-center">
-                        <span className="font-semibold text-slate-800">{l.title}</span>
-                        <span className="text-slate-500 text-[10px] sm:text-xs">{l.datetime}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex gap-2.5 mt-3 no-print">
-              <button type="button" onClick={onClose} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm rounded-xl transition">
+            {/* Floating Action Bar */}
+            <div className="w-full max-w-2xl pt-3 flex gap-2.5 no-print">
+              <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm rounded-2xl transition shadow-lg">
                 ปิดหน้าต่าง
               </button>
-              <button type="button" onClick={handlePrint} className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-slate-900/20 transition flex items-center justify-center gap-2">
-                <i data-lucide="printer" className="w-4 h-4"></i> พิมพ์ / Save PDF
+              <button type="button" onClick={handlePrint} className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-500/30 transition flex items-center justify-center gap-2">
+                <i data-lucide="printer" className="w-4 h-4"></i> พิมพ์ / สั่งพิมพ์ PDF
               </button>
             </div>
+
           </div>
         </div>
       );
@@ -1237,7 +1270,7 @@
                 <div className="flex items-center space-x-1.5 sm:space-x-2">
                   <button onClick={() => setPrintModalOpen(true)} className="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md transition">
                     <i data-lucide="printer" className="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
-                    <span className="hidden sm:inline">สรุปรายงานประจำวัน</span>
+                    <span className="hidden sm:inline">สรุปรายงานประจำวัน (A4)</span>
                   </button>
 
                   {lowStockItems.length > 0 && (
